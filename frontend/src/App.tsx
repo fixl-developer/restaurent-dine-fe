@@ -3,6 +3,9 @@ import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import CartDrawer from './components/CartDrawer';
 import CheckoutModal from './components/CheckoutModal';
+import LoginPage from './pages/LoginPage';
+import RequireAuth from './components/auth/RequireAuth';
+import { useMe } from './hooks/useAuth';
 import {
   CartItem,
   MenuItem,
@@ -57,6 +60,9 @@ const PAGE_TO_PATH: Record<string, string> = {
 export default function App() {
   const reactRouterNav = useNavigate();
   const location = useLocation();
+
+  // Rehydrate the current user on app load if we have a stored token.
+  useMe();
 
   // Splash — show on every page open
   const [showSplash, setShowSplash] = useState(true);
@@ -265,21 +271,38 @@ export default function App() {
               </div>
             }
           />
+          <Route path="/login" element={<LoginPage />} />
           <Route
             path="/admin/*"
-            element={<AdminPortal onExit={() => navigate('home')} />}
+            element={
+              <RequireAuth>
+                <AdminPortal onExit={() => navigate('home')} />
+              </RequireAuth>
+            }
           />
           <Route
             path="/kds"
-            element={<KitchenDisplaySystem onExit={() => navigate('home')} />}
+            element={
+              <RequireAuth>
+                <KitchenDisplaySystem onExit={() => navigate('home')} />
+              </RequireAuth>
+            }
           />
           <Route
             path="/table-ops"
-            element={<TableOperations onExit={() => navigate('home')} />}
+            element={
+              <RequireAuth>
+                <TableOperations onExit={() => navigate('home')} />
+              </RequireAuth>
+            }
           />
           <Route
             path="/billing-ops"
-            element={<BillingPayments onExit={() => navigate('home')} />}
+            element={
+              <RequireAuth>
+                <BillingPayments onExit={() => navigate('home')} />
+              </RequireAuth>
+            }
           />
           <Route
             path="/qr-order"
@@ -288,25 +311,27 @@ export default function App() {
           <Route
             path="/vendor"
             element={
-              <VendorDashboard
-                orders={orders}
-                setOrders={setOrders}
-                menuItems={menuItems}
-                setMenuItems={setMenuItems}
-                tables={tables}
-                setTables={setTables}
-                stock={stock}
-                setStock={setStock}
-                staff={staff}
-                setStaff={setStaff}
-                alerts={alerts}
-                setAlerts={setAlerts}
-                customers={customers}
-                setCustomers={setCustomers}
-                dinerConfig={dinerConfig}
-                setDinerConfig={setDinerConfig}
-                onExit={() => navigate('home')}
-              />
+              <RequireAuth>
+                <VendorDashboard
+                  orders={orders}
+                  setOrders={setOrders}
+                  menuItems={menuItems}
+                  setMenuItems={setMenuItems}
+                  tables={tables}
+                  setTables={setTables}
+                  stock={stock}
+                  setStock={setStock}
+                  staff={staff}
+                  setStaff={setStaff}
+                  alerts={alerts}
+                  setAlerts={setAlerts}
+                  customers={customers}
+                  setCustomers={setCustomers}
+                  dinerConfig={dinerConfig}
+                  setDinerConfig={setDinerConfig}
+                  onExit={() => navigate('home')}
+                />
+              </RequireAuth>
             }
           />
           <Route

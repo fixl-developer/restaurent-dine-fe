@@ -4,6 +4,8 @@ import {
   Receipt, Package, Users, Gift, BarChart3, Settings, Shield,
   ClipboardList, Bell, ChevronLeft, Menu, X, Lock, LogOut, Store
 } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth.store';
+import { useLogout } from '@/hooks/useAuth';
 import AdminDashboard from './AdminDashboard';
 import AdminReports from './AdminReports';
 import AdminMenuManagement from './AdminMenuManagement';
@@ -84,10 +86,12 @@ function ComingSoon({ module }: { module: string }) {
   );
 }
 
-function Sidebar({ active, onNavigate, collapsed, onToggle, onExit }: {
+function Sidebar({ active, onNavigate, collapsed, onToggle, onSignOut }: {
   active: AdminModule; onNavigate: (m: AdminModule) => void;
-  collapsed: boolean; onToggle: () => void; onExit: () => void;
+  collapsed: boolean; onToggle: () => void; onSignOut: () => void;
 }) {
+  const user = useAuthStore((s) => s.user);
+  const initial = (user?.name?.[0] ?? user?.email?.[0] ?? 'A').toUpperCase();
   return (
     <aside className={`h-screen bg-black flex flex-col transition-all duration-200 shrink-0 ${collapsed ? 'w-16' : 'w-60'}`}>
       {/* Logo */}
@@ -160,20 +164,20 @@ function Sidebar({ active, onNavigate, collapsed, onToggle, onExit }: {
       {/* Footer */}
       <div className="border-t border-white/10 p-3 space-y-1 shrink-0">
         <div className={`flex items-center gap-3 px-2 py-2 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-7 h-7 rounded-full bg-pink-300 flex items-center justify-center shrink-0 text-[11px] font-bold text-pink-900">A</div>
+          <div className="w-7 h-7 rounded-full bg-pink-300 flex items-center justify-center shrink-0 text-[11px] font-bold text-pink-900">{initial}</div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-white truncate">Admin User</p>
-              <p className="text-[10px] text-neutral-500 truncate">Owner</p>
+              <p className="text-xs font-semibold text-white truncate">{user?.name ?? 'Staff'}</p>
+              <p className="text-[10px] text-neutral-500 truncate capitalize">{user?.role.name ?? user?.role.key ?? '—'}</p>
             </div>
           )}
         </div>
         <button
-          onClick={onExit}
+          onClick={onSignOut}
           className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-xs text-neutral-500 hover:text-white hover:bg-white/8 transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
           <LogOut className="w-4 h-4 shrink-0" />
-          {!collapsed && <span>Exit to Site</span>}
+          {!collapsed && <span>Sign out</span>}
         </button>
       </div>
     </aside>
@@ -232,6 +236,7 @@ function TopBar({ module, onExit }: { module: AdminModule; onExit: () => void })
 export default function AdminPortal({ onExit }: { onExit: () => void }) {
   const [activeModule, setActiveModule] = useState<AdminModule>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const logoutMutation = useLogout();
 
   const activeItem = NAV_GROUPS.flatMap(g => g.items).find(i => i.id === activeModule);
   const moduleLabel = activeItem?.label || activeModule;
@@ -258,8 +263,13 @@ export default function AdminPortal({ onExit }: { onExit: () => void }) {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
-      <Sidebar active={activeModule} onNavigate={setActiveModule}
-        collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} onExit={onExit} />
+      <Sidebar
+        active={activeModule}
+        onNavigate={setActiveModule}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(p => !p)}
+        onSignOut={() => logoutMutation.mutate()}
+      />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <TopBar module={activeModule} onExit={onExit} />
