@@ -127,7 +127,7 @@ function SalesReport() {
                 <Pie data={CATEGORY_SALES} dataKey="revenue" nameKey="category" cx="50%" cy="50%" outerRadius={70} strokeWidth={2} stroke="#fff">
                   {CATEGORY_SALES.map((_, i) => <Cell key={i} fill={PAYMENT_COLORS[i]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number) => `₹${v.toLocaleString()}`} />
+                <Tooltip formatter={((v: unknown) => `₹${Number(v).toLocaleString()}`) as never} />
               </PieChart>
             </ResponsiveContainer>
             <div className="space-y-2 text-xs">
@@ -196,7 +196,7 @@ function TaxReport() {
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
             <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
-            <Tooltip formatter={(v: number) => `₹${v.toLocaleString()}`} />
+            <Tooltip formatter={((v: unknown) => `₹${Number(v).toLocaleString()}`) as never} />
             <Bar dataKey="tax" name="Tax" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -228,7 +228,7 @@ function PaymentsReport() {
                   outerRadius={80} innerRadius={45} strokeWidth={2} stroke="#fff">
                   {PAYMENT_BREAKDOWN.map((_, i) => <Cell key={i} fill={PAYMENT_COLORS[i]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number) => `₹${v.toLocaleString()}`} />
+                <Tooltip formatter={((v: unknown) => `₹${Number(v).toLocaleString()}`) as never} />
               </PieChart>
             </ResponsiveContainer>
             <div className="space-y-3 text-xs">
@@ -303,7 +303,7 @@ function StaffReport() {
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
             <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
             <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} tickLine={false} axisLine={false} width={80} />
-            <Tooltip formatter={(v: number) => [`${v} orders`, 'Orders Served']} />
+            <Tooltip formatter={((v: unknown) => [`${Number(v)} orders`, 'Orders Served']) as never} />
             <Bar dataKey="ordersServed" name="Orders" fill="#ec4899" radius={[0, 6, 6, 0]} />
           </BarChart>
         </ResponsiveContainer>

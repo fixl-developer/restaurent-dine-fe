@@ -85,7 +85,7 @@ function OverviewTab() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 9, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} tickLine={false} axisLine={false} />
-              <Tooltip formatter={(v: number) => [`${v} pts`, 'Points']} />
+              <Tooltip formatter={((v: unknown) => [`${Number(v)} pts`, 'Points']) as never} />
               <Bar dataKey="points" fill="#ec4899" radius={[0, 6, 6, 0]} />
             </BarChart>
           </ResponsiveContainer>
