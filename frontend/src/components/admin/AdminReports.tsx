@@ -1,491 +1,1037 @@
 import { useState } from 'react';
 import {
-  Download, Calendar, TrendingUp, TrendingDown, ShoppingBag,
-  CreditCard, Users, Package, Star, ChevronDown, FileText
+  Download,
+  CalendarRange,
+  Receipt,
+  Package,
+  Star,
+  Users,
+  ShoppingBag,
+  CreditCard,
+  TrendingUp,
+  Percent,
+  ChefHat,
+  RefreshCw,
 } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from 'recharts';
 import {
-  MONTHLY_REVENUE, MONTHLY_DAILY, PAYMENT_BREAKDOWN, PAYMENT_COLORS,
-  TAX_REPORT, STAFF_PERFORMANCE, INVENTORY_REPORT, FEEDBACK_SUMMARY,
-  RECENT_FEEDBACK, CATEGORY_SALES
-} from './adminMockData';
+  useSalesReport,
+  useItemsReport,
+  useTaxReport,
+  usePaymentsReport,
+  useStaffReport,
+  useFootfallReport,
+  useInventoryReport,
+  useFeedbackReport,
+  useProfitabilityReport,
+  downloadReportExport,
+} from '@/hooks/useReports';
+import {
+  CHANNEL_NAMES,
+  PAYMENT_MODE_LABELS,
+  formatHour,
+  type ExportFormat,
+  type ReportChannel,
+  type ReportGroupBy,
+  type ReportType,
+} from '@/lib/dto/reports';
 
-type ReportTab = 'sales' | 'tax' | 'payments' | 'staff' | 'inventory' | 'feedback';
+type Tab =
+  | 'sales'
+  | 'items'
+  | 'tax'
+  | 'payments'
+  | 'staff'
+  | 'footfall'
+  | 'inventory'
+  | 'feedback'
+  | 'profitability';
 
-// ─── KPI Summary Card ─────────────────────────────────────────────────────────
-function ReportKpi({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
+const CHANNEL_COLORS = ['#ec4899', '#8b5cf6', '#3b82f6'];
+
+function fmtINR(n: number): string {
+  return `₹${Math.round(n).toLocaleString()}`;
+}
+
+function fmtINR2(n: number): string {
+  return `₹${n.toFixed(2)}`;
+}
+
+function daysAgo(d: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - d);
+  return date.toISOString().slice(0, 10);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main
+// ─────────────────────────────────────────────────────────────────────────────
+export default function AdminReports() {
+  const [tab, setTab] = useState<Tab>('sales');
+  const [from, setFrom] = useState(daysAgo(29));
+  const [to, setTo] = useState(daysAgo(0));
+
+  const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
+    { id: 'sales', label: 'Sales', icon: TrendingUp },
+    { id: 'items', label: 'Items', icon: ShoppingBag },
+    { id: 'profitability', label: 'Profitability', icon: Percent },
+    { id: 'tax', label: 'Tax', icon: Receipt },
+    { id: 'payments', label: 'Payments', icon: CreditCard },
+    { id: 'staff', label: 'Staff', icon: Users },
+    { id: 'footfall', label: 'Footfall', icon: ChefHat },
+    { id: 'inventory', label: 'Inventory', icon: Package },
+    { id: 'feedback', label: 'Feedback', icon: Star },
+  ];
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-      <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{label}</p>
-      <p className="text-xl font-bold text-gray-900 mt-1">{value}</p>
-      {sub && (
-        <p className={`text-xs mt-1 font-medium flex items-center gap-1 ${positive ? 'text-emerald-600' : positive === false ? 'text-red-500' : 'text-gray-400'}`}>
-          {positive !== undefined && (positive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />)}
-          {sub}
-        </p>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Reports & Analytics</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Live numbers, sliceable by date range</p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <DateRangeBar
+            from={from}
+            to={to}
+            onChange={(f, t) => {
+              setFrom(f);
+              setTo(t);
+            }}
+          />
+          <ExportMenu
+            type={tab}
+            range={{ from, to }}
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 flex-wrap">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+              tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="animate-[fadeIn_0.2s_ease-out]">
+        {tab === 'sales' && <SalesTab from={from} to={to} />}
+        {tab === 'items' && <ItemsTab from={from} to={to} />}
+        {tab === 'profitability' && <ProfitabilityTab from={from} to={to} />}
+        {tab === 'tax' && <TaxTab from={from} to={to} />}
+        {tab === 'payments' && <PaymentsTab from={from} to={to} />}
+        {tab === 'staff' && <StaffTab from={from} to={to} />}
+        {tab === 'footfall' && <FootfallTab from={from} to={to} />}
+        {tab === 'inventory' && <InventoryTab from={from} to={to} />}
+        {tab === 'feedback' && <FeedbackTab from={from} to={to} />}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Date range bar
+// ─────────────────────────────────────────────────────────────────────────────
+function DateRangeBar({
+  from,
+  to,
+  onChange,
+}: {
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
+  const presets = [
+    { label: 'Today', from: daysAgo(0), to: daysAgo(0) },
+    { label: '7d', from: daysAgo(6), to: daysAgo(0) },
+    { label: '30d', from: daysAgo(29), to: daysAgo(0) },
+    { label: '90d', from: daysAgo(89), to: daysAgo(0) },
+  ];
+  return (
+    <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2 py-1">
+      <CalendarRange className="w-3.5 h-3.5 text-gray-400 mx-1.5" />
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => onChange(e.target.value, to)}
+        className="text-xs border-0 focus:outline-none bg-transparent"
+      />
+      <span className="text-xs text-gray-300">→</span>
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => onChange(from, e.target.value)}
+        className="text-xs border-0 focus:outline-none bg-transparent"
+      />
+      <div className="flex gap-0.5 ml-2">
+        {presets.map((p) => (
+          <button
+            key={p.label}
+            onClick={() => onChange(p.from, p.to)}
+            className="text-[10px] font-semibold px-2 py-1 rounded-md hover:bg-gray-100 text-gray-600 transition-colors"
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExportMenu({
+  type,
+  range,
+}: {
+  type: ReportType;
+  range: { from: string; to: string };
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
+      >
+        <Download className="w-4 h-4" /> Export
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden z-20">
+          {(['csv', 'xlsx', 'pdf'] as ExportFormat[]).map((f) => (
+            <button
+              key={f}
+              onClick={async () => {
+                setOpen(false);
+                await downloadReportExport(type, f, range);
+              }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors uppercase"
+            >
+              {f}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Section Header ───────────────────────────────────────────────────────────
-function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function ReportKpi({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  color,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon?: React.ElementType;
+  color?: string;
+}) {
   return (
-    <div className="border-b border-gray-100 pb-3 mb-5">
-      <h3 className="font-semibold text-gray-900">{title}</h3>
-      <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+      <div className="flex items-start justify-between mb-1">
+        <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{label}</p>
+        {Icon && color && (
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${color}`}>
+            <Icon className="w-3.5 h-3.5" />
+          </div>
+        )}
+      </div>
+      <p className="text-xl font-bold text-gray-900">{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
     </div>
   );
 }
 
-// ─── Table ────────────────────────────────────────────────────────────────────
-function DataTable({ headers, rows }: { headers: string[]; rows: (string | number | React.ReactNode)[][] }) {
+function DataTable({
+  headers,
+  rows,
+  empty,
+  loading,
+}: {
+  headers: string[];
+  rows: (string | number | React.ReactNode)[][];
+  empty?: string;
+  loading?: boolean;
+}) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200">
+    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
-            {headers.map(h => (
-              <th key={h} className="text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 py-3">{h}</th>
+            {headers.map((h) => (
+              <th
+                key={h}
+                className="text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 py-3 whitespace-nowrap"
+              >
+                {h}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {rows.map((row, i) => (
-            <tr key={i} className="hover:bg-gray-50 transition-colors">
-              {row.map((cell, j) => (
-                <td key={j} className="px-4 py-3 text-sm text-gray-700">{cell}</td>
-              ))}
+          {loading ? (
+            <tr>
+              <td colSpan={headers.length} className="px-4 py-10 text-center text-sm text-gray-400">
+                Loading...
+              </td>
             </tr>
-          ))}
+          ) : rows.length === 0 ? (
+            <tr>
+              <td colSpan={headers.length} className="px-4 py-10 text-center text-sm text-gray-400">
+                {empty ?? 'No data for the selected range.'}
+              </td>
+            </tr>
+          ) : (
+            rows.map((row, i) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors">
+                {row.map((cell, j) => (
+                  <td key={j} className="px-4 py-3 text-sm text-gray-700">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
   );
 }
 
-// ─── Tooltip ──────────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
+function RefreshButton({ onClick, busy }: { onClick: () => void; busy?: boolean }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-lg text-xs space-y-1">
-      <p className="font-semibold text-gray-700">{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.name} style={{ color: p.color }} className="font-medium">
-          {p.name}: {typeof p.value === 'number' && p.name?.toLowerCase().includes('revenue') ? `₹${p.value.toLocaleString()}` : p.value}
-        </p>
-      ))}
-    </div>
+    <button
+      onClick={onClick}
+      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+      title="Refresh"
+    >
+      <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
+    </button>
   );
 }
 
-// ─── Sales Tab ────────────────────────────────────────────────────────────────
-function SalesReport() {
-  const totalRevenue = MONTHLY_DAILY.reduce((s, d) => s + d.revenue, 0);
-  const totalOrders = MONTHLY_DAILY.reduce((s, d) => s + d.orders, 0);
-  const avgDaily = Math.round(totalRevenue / MONTHLY_DAILY.length);
+// ─────────────────────────────────────────────────────────────────────────────
+// Sales tab
+// ─────────────────────────────────────────────────────────────────────────────
+function SalesTab({ from, to }: { from: string; to: string }) {
+  const [groupBy, setGroupBy] = useState<ReportGroupBy>('day');
+  const [channel, setChannel] = useState<ReportChannel | 'all'>('all');
+
+  const query = useSalesReport({
+    from,
+    to,
+    groupBy,
+    channel: channel === 'all' ? undefined : channel,
+  });
+
+  const data = query.data;
+  const chartData = (data?.buckets ?? []).map((b) => ({
+    bucket: b.bucket.slice(5),
+    gross: b.gross,
+    net: b.net,
+    discount: b.discount,
+  }));
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ReportKpi label="Total Revenue" value={`₹${(totalRevenue / 100000).toFixed(2)}L`} sub="+18.4% vs last month" positive={true} />
-        <ReportKpi label="Total Orders"  value={totalOrders.toString()} sub="+12.1% vs last month" positive={true} />
-        <ReportKpi label="Avg Daily Revenue" value={`₹${avgDaily.toLocaleString()}`} />
-        <ReportKpi label="Peak Day" value="May 29" sub="₹71,200 revenue" />
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <ReportKpi label="Gross" value={fmtINR(data?.totals.gross ?? 0)} icon={CreditCard} color="bg-pink-50 text-pink-600" />
+        <ReportKpi label="Discount" value={fmtINR(data?.totals.discount ?? 0)} icon={Percent} color="bg-amber-50 text-amber-600" />
+        <ReportKpi label="Tax" value={fmtINR(data?.totals.tax ?? 0)} icon={Receipt} color="bg-violet-50 text-violet-600" />
+        <ReportKpi label="Service Charge" value={fmtINR(data?.totals.serviceCharge ?? 0)} icon={CreditCard} color="bg-blue-50 text-blue-600" />
+        <ReportKpi label="Invoices" value={String(data?.totals.invoiceCount ?? 0)} icon={Receipt} color="bg-emerald-50 text-emerald-600" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <SectionHeader title="Daily Revenue — May 2026" subtitle="30-day revenue trend" />
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={MONTHLY_DAILY} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">Revenue over time</h3>
+            <p className="text-xs text-gray-400">Grouped by {groupBy}</p>
+          </div>
+          <div className="flex gap-1.5">
+            <select
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as ReportGroupBy)}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+            >
+              <option value="day">Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+            </select>
+            <select
+              value={channel}
+              onChange={(e) => setChannel(e.target.value as ReportChannel | 'all')}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+            >
+              <option value="all">All channels</option>
+              <option value="dine_in">Dine-In</option>
+              <option value="window">Window</option>
+              <option value="assisted">Assisted</option>
+            </select>
+            <RefreshButton onClick={() => query.refetch()} busy={query.isFetching} />
+          </div>
+        </div>
+
+        <ResponsiveContainer width="100%" height={280}>
+          {chartData.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-sm text-gray-400">
+              {query.isLoading ? 'Loading...' : 'No sales in this range'}
+            </div>
+          ) : (
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ec4899" stopOpacity={0.15} />
+                <linearGradient id="salesGross" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ec4899" stopOpacity={0.2} />
                   <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#9ca3af' }} tickLine={false} axisLine={false}
-                interval={4} />
-              <YAxis tick={{ fontSize: 9, fill: '#9ca3af' }} tickLine={false} axisLine={false}
-                tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#ec4899" strokeWidth={2} fill="url(#rev)" />
+              <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+              <Tooltip formatter={((v: unknown) => fmtINR(Number(v))) as never} />
+              <Area type="monotone" dataKey="gross" name="Gross" stroke="#ec4899" strokeWidth={2} fill="url(#salesGross)" />
+              <Area type="monotone" dataKey="net" name="Net" stroke="#8b5cf6" strokeWidth={2} fill="transparent" />
             </AreaChart>
+          )}
+        </ResponsiveContainer>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        <h3 className="font-semibold text-gray-900 text-sm mb-3">By channel</h3>
+        <div className="grid grid-cols-3 gap-3">
+          {(data?.byChannel ?? []).map((c) => (
+            <div key={c.channel ?? 'unknown'} className="bg-gray-50 rounded-xl p-4">
+              <p className="text-[10px] uppercase font-semibold text-gray-500">
+                {c.channel ? CHANNEL_NAMES[c.channel] : 'Unknown'}
+              </p>
+              <p className="text-lg font-bold text-gray-900 mt-1">{fmtINR(c.gross)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{c.invoiceCount} invoices</p>
+            </div>
+          ))}
+          {(data?.byChannel ?? []).length === 0 && (
+            <p className="text-xs text-gray-400 col-span-3">No channel data yet.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Items tab
+// ─────────────────────────────────────────────────────────────────────────────
+function ItemsTab({ from, to }: { from: string; to: string }) {
+  const [sortBy, setSortBy] = useState<'top' | 'slow'>('top');
+  const query = useItemsReport({ from, to, sortBy, limit: 30 });
+  const items = query.data?.items ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-1.5 bg-gray-100 rounded-xl p-1">
+          {(['top', 'slow'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSortBy(s)}
+              className={`px-4 py-1.5 text-xs font-medium rounded-lg ${
+                sortBy === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+              }`}
+            >
+              {s === 'top' ? 'Top sellers' : 'Slow movers'}
+            </button>
+          ))}
+        </div>
+        <RefreshButton onClick={() => query.refetch()} busy={query.isFetching} />
+      </div>
+
+      <DataTable
+        headers={['Rank', 'Item', 'Qty Sold', 'Revenue', 'Order Count', 'Avg Per Order']}
+        loading={query.isLoading}
+        empty={`No ${sortBy === 'top' ? 'top sellers' : 'slow movers'} in this range`}
+        rows={items.map((item, i) => [
+          <span key="r" className="text-xs font-black text-gray-400">
+            #{i + 1}
+          </span>,
+          <span key="n" className="font-semibold text-gray-900">
+            {item.name}
+          </span>,
+          item.qty,
+          fmtINR(item.revenue),
+          item.orderCount,
+          item.orderCount > 0 ? (item.qty / item.orderCount).toFixed(1) : '—',
+        ])}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Profitability
+// ─────────────────────────────────────────────────────────────────────────────
+function ProfitabilityTab({ from, to }: { from: string; to: string }) {
+  const query = useProfitabilityReport({ from, to });
+  const items = query.data?.items ?? [];
+
+  const totalRev = items.reduce((s, i) => s + i.revenue, 0);
+  const totalCost = items.reduce((s, i) => s + i.cost, 0);
+  const totalProfit = totalRev - totalCost;
+  const margin = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-4 gap-3">
+        <ReportKpi label="Revenue" value={fmtINR(totalRev)} icon={CreditCard} color="bg-pink-50 text-pink-600" />
+        <ReportKpi label="Ingredient Cost" value={fmtINR(totalCost)} icon={Package} color="bg-amber-50 text-amber-600" />
+        <ReportKpi label="Gross Profit" value={fmtINR(totalProfit)} icon={TrendingUp} color="bg-emerald-50 text-emerald-600" />
+        <ReportKpi label="Margin" value={`${margin.toFixed(1)}%`} icon={Percent} color="bg-violet-50 text-violet-600" />
+      </div>
+      <p className="text-[11px] text-gray-400 italic">
+        Cost is computed from each item's base recipe (no variant overrides yet). Items without a
+        recipe show as zero cost.
+      </p>
+
+      <DataTable
+        headers={['Item', 'Qty', 'Revenue', 'Cost', 'Gross Profit', 'Margin']}
+        loading={query.isLoading}
+        empty="No item sales in this range — or no recipes configured"
+        rows={items.map((p) => [
+          <span key="n" className="font-semibold text-gray-900">
+            {p.name}
+          </span>,
+          p.qty,
+          fmtINR(p.revenue),
+          p.cost > 0 ? fmtINR(p.cost) : <span className="text-gray-400">—</span>,
+          <span key="gp" className={p.grossProfit < 0 ? 'text-red-600 font-bold' : 'text-gray-900'}>
+            {fmtINR(p.grossProfit)}
+          </span>,
+          <span key="m" className={p.margin < 30 ? 'text-amber-600' : 'text-emerald-600'}>
+            {p.margin.toFixed(1)}%
+          </span>,
+        ])}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tax
+// ─────────────────────────────────────────────────────────────────────────────
+function TaxTab({ from, to }: { from: string; to: string }) {
+  const query = useTaxReport({ from, to });
+  const data = query.data;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-3">
+        <ReportKpi
+          label="Invoices"
+          value={String(data?.summary.invoiceCount ?? 0)}
+          icon={Receipt}
+          color="bg-blue-50 text-blue-600"
+        />
+        <ReportKpi
+          label="Taxable Turnover"
+          value={fmtINR(data?.summary.taxableTurnover ?? 0)}
+          icon={CreditCard}
+          color="bg-violet-50 text-violet-600"
+        />
+        <ReportKpi
+          label="Total Tax"
+          value={fmtINR(data?.summary.totalTax ?? 0)}
+          icon={Percent}
+          color="bg-amber-50 text-amber-600"
+        />
+      </div>
+
+      <DataTable
+        headers={['Tax Name', 'Type', 'Rate', 'Amount Collected']}
+        loading={query.isLoading}
+        empty="No tax breakdown yet"
+        rows={(data?.breakup ?? []).map((b) => [
+          <span key="n" className="font-semibold text-gray-900">
+            {b.name}
+          </span>,
+          <span key="t" className="text-xs uppercase text-gray-500">
+            {b.type}
+          </span>,
+          `${b.rate}%`,
+          fmtINR2(b.amount),
+        ])}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Payments
+// ─────────────────────────────────────────────────────────────────────────────
+function PaymentsTab({ from, to }: { from: string; to: string }) {
+  const query = usePaymentsReport({ from, to });
+  const data = query.data;
+
+  const pieData = (data?.byMode ?? []).map((m) => ({
+    name: PAYMENT_MODE_LABELS[m.mode] ?? m.mode,
+    value: m.gross,
+  }));
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-3">
+        <ReportKpi
+          label="Total Collected"
+          value={fmtINR((data?.byMode ?? []).reduce((s, m) => s + m.gross, 0))}
+          icon={CreditCard}
+          color="bg-emerald-50 text-emerald-600"
+        />
+        <ReportKpi
+          label="Refunded"
+          value={fmtINR((data?.byMode ?? []).reduce((s, m) => s + m.refunded, 0))}
+          icon={Receipt}
+          color="bg-red-50 text-red-600"
+        />
+        <ReportKpi
+          label="Voided Invoices"
+          value={String(data?.voidedInvoices ?? 0)}
+          icon={Receipt}
+          color="bg-gray-50 text-gray-600"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+          <h3 className="font-semibold text-gray-900 text-sm mb-3">By payment mode</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            {pieData.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-gray-400">
+                {query.isLoading ? 'Loading...' : 'No payments yet'}
+              </div>
+            ) : (
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {pieData.map((_, i) => (
+                    <Cell key={i} fill={CHANNEL_COLORS[i % CHANNEL_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={((v: unknown) => fmtINR(Number(v))) as never} />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+              </PieChart>
+            )}
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <SectionHeader title="Revenue by Category" subtitle="Monthly contribution" />
-          <div className="flex items-center gap-6">
-            <ResponsiveContainer width="50%" height={180}>
-              <PieChart>
-                <Pie data={CATEGORY_SALES} dataKey="revenue" nameKey="category" cx="50%" cy="50%" outerRadius={70} strokeWidth={2} stroke="#fff">
-                  {CATEGORY_SALES.map((_, i) => <Cell key={i} fill={PAYMENT_COLORS[i]} />)}
-                </Pie>
-                <Tooltip formatter={((v: unknown) => `₹${Number(v).toLocaleString()}`) as never} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-2 text-xs">
-              {CATEGORY_SALES.map((c, i) => (
-                <div key={c.category} className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PAYMENT_COLORS[i] }} />
-                  <span className="text-gray-600 font-medium">{c.category}</span>
-                  <span className="text-gray-400 ml-auto pl-4">{c.pct}%</span>
-                </div>
-              ))}
-            </div>
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900 text-sm">Mode breakdown</h3>
           </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                {['Mode', 'Count', 'Gross', 'Refunded', 'Net'].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 py-2.5"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {(data?.byMode ?? []).map((m) => (
+                <tr key={m.mode} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5 font-semibold text-gray-900">
+                    {PAYMENT_MODE_LABELS[m.mode] ?? m.mode}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-500">{m.count}</td>
+                  <td className="px-4 py-2.5">{fmtINR(m.gross)}</td>
+                  <td className="px-4 py-2.5 text-red-600">{fmtINR(m.refunded)}</td>
+                  <td className="px-4 py-2.5 font-bold">{fmtINR(m.net)}</td>
+                </tr>
+              ))}
+              {(data?.byMode ?? []).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">
+                    No payment data yet
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <SectionHeader title="Weekly Breakdown" subtitle="Revenue, orders, and tax" />
-        <DataTable
-          headers={['Week', 'Revenue', 'Orders', 'Avg Order', 'Tax Collected']}
-          rows={MONTHLY_REVENUE.map(w => [
-            w.week,
-            `₹${w.revenue.toLocaleString()}`,
-            w.orders,
-            `₹${Math.round(w.revenue / w.orders).toLocaleString()}`,
-            `₹${w.tax.toLocaleString()}`
-          ])}
-        />
-      </div>
+      <DataTable
+        headers={['Refund Method', 'Count', 'Amount']}
+        loading={query.isLoading}
+        empty="No refunds in this range"
+        rows={(data?.refunds ?? []).map((r) => [
+          <span key="m" className="font-semibold text-gray-900 capitalize">
+            {r.method}
+          </span>,
+          r.count,
+          fmtINR(r.amount),
+        ])}
+      />
     </div>
   );
 }
 
-// ─── Tax Tab ─────────────────────────────────────────────────────────────────
-function TaxReport() {
-  const totalTax = TAX_REPORT.reduce((s, t) => s + t.total, 0);
-  const totalTaxable = TAX_REPORT.reduce((s, t) => s + t.taxable, 0);
+// ─────────────────────────────────────────────────────────────────────────────
+// Staff
+// ─────────────────────────────────────────────────────────────────────────────
+function StaffTab({ from, to }: { from: string; to: string }) {
+  const query = useStaffReport({ from, to });
+  const data = query.data;
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ReportKpi label="Total Taxable" value={`₹${totalTaxable.toLocaleString()}`} />
-        <ReportKpi label="Total Tax Collected" value={`₹${totalTax.toLocaleString()}`} sub="CGST + SGST @ 5% each" />
-        <ReportKpi label="CGST Collected" value={`₹${TAX_REPORT.reduce((s, t) => s + t.cgst, 0).toLocaleString()}`} />
-        <ReportKpi label="SGST Collected" value={`₹${TAX_REPORT.reduce((s, t) => s + t.sgst, 0).toLocaleString()}`} />
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <SectionHeader title="Tax Breakdown by Category" subtitle="GST applicable on all food items @ 5% CGST + 5% SGST" />
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-900 text-sm">Waiters</h3>
+        </div>
         <DataTable
-          headers={['Category', 'Taxable Amount', 'CGST (5%)', 'SGST (5%)', 'Total Tax', 'Effective Rate']}
-          rows={TAX_REPORT.map(t => [
-            t.category,
-            `₹${t.taxable.toLocaleString()}`,
-            `₹${t.cgst.toLocaleString()}`,
-            `₹${t.sgst.toLocaleString()}`,
-            <span className="font-semibold text-gray-900">₹{t.total.toLocaleString()}</span>,
-            t.taxable > 0 ? '10%' : '—'
+          headers={['Waiter', 'Orders', 'Gross', 'Cancelled']}
+          loading={query.isLoading}
+          empty="No waiter activity in this range"
+          rows={(data?.waiters ?? []).map((w) => [
+            <span key="n" className="font-semibold text-gray-900">
+              {w.name ?? w.email ?? 'Unknown'}
+            </span>,
+            w.orderCount,
+            fmtINR(w.gross),
+            w.cancelled > 0 ? (
+              <span key="c" className="text-red-600">
+                {w.cancelled}
+              </span>
+            ) : (
+              '—'
+            ),
           ])}
         />
       </div>
 
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-900 text-sm">Cashiers</h3>
+        </div>
+        <DataTable
+          headers={['Cashier', 'Invoices', 'Gross', 'Discount Given']}
+          loading={query.isLoading}
+          empty="No cashier activity in this range"
+          rows={(data?.cashiers ?? []).map((c) => [
+            <span key="n" className="font-semibold text-gray-900">
+              {c.name ?? c.email ?? 'Unknown'}
+            </span>,
+            c.invoiceCount,
+            fmtINR(c.gross),
+            fmtINR(c.discount),
+          ])}
+        />
+      </div>
+
+      {(data?.itemVoidsByActor ?? []).length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900 text-sm">Item voids by staff</h3>
+            <p className="text-[11px] text-gray-400">Investigate spikes here</p>
+          </div>
+          <DataTable
+            headers={['Staff', 'Voids']}
+            loading={false}
+            rows={data!.itemVoidsByActor.map((v) => [
+              <span key="n" className="font-semibold text-gray-900">
+                {v.name ?? v.email ?? 'Unknown'}
+              </span>,
+              <span key="c" className="text-red-600 font-bold">
+                {v.voidCount}
+              </span>,
+            ])}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Footfall
+// ─────────────────────────────────────────────────────────────────────────────
+function FootfallTab({ from, to }: { from: string; to: string }) {
+  const query = useFootfallReport({ from, to });
+  const data = query.data;
+
+  const peakChart = (data?.peakHours ?? []).map((p) => ({
+    hour: formatHour(p.hour),
+    orders: p.count,
+    gross: p.gross,
+  }));
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-4 gap-3">
+        <ReportKpi
+          label="Sessions"
+          value={String(data?.diningRoom.sessionCount ?? 0)}
+          icon={Users}
+          color="bg-violet-50 text-violet-600"
+        />
+        <ReportKpi
+          label="Avg Dwell"
+          value={`${data?.diningRoom.avgDwellMinutes ?? 0} min`}
+          icon={CalendarRange}
+          color="bg-blue-50 text-blue-600"
+        />
+        <ReportKpi
+          label="Avg Ticket"
+          value={fmtINR(data?.diningRoom.avgTicket ?? 0)}
+          icon={CreditCard}
+          color="bg-emerald-50 text-emerald-600"
+        />
+        <ReportKpi
+          label="Avg Guests"
+          value={(data?.diningRoom.avgGuestCount ?? 0).toFixed(1)}
+          icon={Users}
+          color="bg-pink-50 text-pink-600"
+        />
+      </div>
+
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <SectionHeader title="Monthly Tax Trend" subtitle="Tax collected per week" />
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={MONTHLY_REVENUE} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-            <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
-            <Tooltip formatter={((v: unknown) => `₹${Number(v).toLocaleString()}`) as never} />
-            <Bar dataKey="tax" name="Tax" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
-          </BarChart>
+        <h3 className="font-semibold text-gray-900 text-sm mb-3">Peak hours</h3>
+        <ResponsiveContainer width="100%" height={240}>
+          {peakChart.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-sm text-gray-400">
+              {query.isLoading ? 'Loading...' : 'No order data in this range'}
+            </div>
+          ) : (
+            <BarChart data={peakChart} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+              <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
+              <Tooltip />
+              <Bar dataKey="orders" fill="#ec4899" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          )}
         </ResponsiveContainer>
       </div>
+
+      <DataTable
+        headers={['Channel', 'Order Count']}
+        loading={query.isLoading}
+        empty="No channel data yet"
+        rows={(data?.channelMix ?? []).map((c) => [
+          <span key="c" className="font-semibold text-gray-900">
+            {c.channel ? CHANNEL_NAMES[c.channel] : 'Unknown'}
+          </span>,
+          c.count,
+        ])}
+      />
     </div>
   );
 }
 
-// ─── Payments Tab ────────────────────────────────────────────────────────────
-function PaymentsReport() {
-  const total = PAYMENT_BREAKDOWN.reduce((s, p) => s + p.amount, 0);
+// ─────────────────────────────────────────────────────────────────────────────
+// Inventory
+// ─────────────────────────────────────────────────────────────────────────────
+function InventoryTab({ from, to }: { from: string; to: string }) {
+  const query = useInventoryReport({ from, to });
+  const data = query.data;
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ReportKpi label="Total Collected" value={`₹${(total / 100000).toFixed(2)}L`} sub="+15.3% vs last month" positive={true} />
-        <ReportKpi label="Transactions" value={PAYMENT_BREAKDOWN.reduce((s, p) => s + p.count, 0).toString()} />
-        <ReportKpi label="Top Method" value="UPI" sub="43% of payments" />
-        <ReportKpi label="Avg Transaction" value={`₹${Math.round(total / PAYMENT_BREAKDOWN.reduce((s, p) => s + p.count, 0)).toLocaleString()}`} />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <SectionHeader title="Payment Method Split" subtitle="By transaction volume (₹)" />
-          <div className="flex items-center justify-center gap-8">
-            <ResponsiveContainer width="55%" height={200}>
-              <PieChart>
-                <Pie data={PAYMENT_BREAKDOWN} dataKey="amount" nameKey="method" cx="50%" cy="50%"
-                  outerRadius={80} innerRadius={45} strokeWidth={2} stroke="#fff">
-                  {PAYMENT_BREAKDOWN.map((_, i) => <Cell key={i} fill={PAYMENT_COLORS[i]} />)}
-                </Pie>
-                <Tooltip formatter={((v: unknown) => `₹${Number(v).toLocaleString()}`) as never} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-3 text-xs">
-              {PAYMENT_BREAKDOWN.map((p, i) => (
-                <div key={p.method}>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PAYMENT_COLORS[i] }} />
-                    <span className="font-semibold text-gray-800">{p.method}</span>
-                    <span className="text-gray-400 ml-auto pl-4">{p.pct}%</span>
-                  </div>
-                  <p className="text-gray-400 pl-4">₹{p.amount.toLocaleString()} · {p.count} txns</p>
-                </div>
-              ))}
-            </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900 text-sm">Consumption (recipe deductions)</h3>
           </div>
+          <DataTable
+            headers={['Item', 'Consumed', 'Value']}
+            loading={query.isLoading}
+            empty="No consumption — recipes may not be configured or no orders settled"
+            rows={(data?.consumption ?? []).map((c) => [
+              <span key="n" className="font-semibold text-gray-900">
+                {c.name}
+              </span>,
+              `${c.consumed} ${c.unit}`,
+              c.costValue !== null ? fmtINR2(c.costValue) : <span className="text-gray-400">—</span>,
+            ])}
+          />
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <SectionHeader title="Payment Methods Table" subtitle="Detailed breakdown" />
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900 text-sm">Waste</h3>
+          </div>
           <DataTable
-            headers={['Method', 'Amount', 'Transactions', 'Share', 'Avg Value']}
-            rows={PAYMENT_BREAKDOWN.map((p, i) => [
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full" style={{ background: PAYMENT_COLORS[i] }} />
-                <span className="font-medium">{p.method}</span>
-              </div>,
-              `₹${p.amount.toLocaleString()}`,
-              p.count,
-              `${p.pct}%`,
-              `₹${Math.round(p.amount / p.count).toLocaleString()}`
+            headers={['Item', 'Wasted', 'Cost Loss']}
+            loading={query.isLoading}
+            empty="No waste recorded in this range"
+            rows={(data?.wastage ?? []).map((w) => [
+              <span key="n" className="font-semibold text-gray-900">
+                {w.name}
+              </span>,
+              <span key="q" className="text-red-600">
+                {w.wasted} {w.unit}
+              </span>,
+              w.costValue !== null ? (
+                <span key="v" className="text-red-700 font-bold">
+                  {fmtINR2(w.costValue)}
+                </span>
+              ) : (
+                <span className="text-gray-400">—</span>
+              ),
             ])}
           />
         </div>
       </div>
-    </div>
-  );
-}
 
-// ─── Staff Tab ───────────────────────────────────────────────────────────────
-function StaffReport() {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ReportKpi label="Total Staff" value="5" sub="3 waiters, 1 chef, 1 cashier" />
-        <ReportKpi label="Avg Orders/Staff" value={Math.round(STAFF_PERFORMANCE.reduce((s, p) => s + p.ordersServed, 0) / STAFF_PERFORMANCE.length).toString()} />
-        <ReportKpi label="Best Performer" value="Dev Kumar" sub="4.9 rating · 198 orders" positive={true} />
-        <ReportKpi label="Avg Service Time" value="12 min" sub="-1.4 min vs last month" positive={true} />
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <SectionHeader title="Staff Performance Overview" subtitle="Current month · all roles" />
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-900 text-sm">Currently low stock</h3>
+        </div>
         <DataTable
-          headers={['Name', 'Role', 'Orders Served', 'Avg Service Time', 'Rating', 'Revenue Handled']}
-          rows={STAFF_PERFORMANCE.map(s => [
-            <span className="font-semibold text-gray-900">{s.name}</span>,
-            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{s.role}</span>,
-            s.ordersServed,
-            s.avgTime,
-            <div className="flex items-center gap-1">
-              <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-              <span className="font-semibold">{s.rating}</span>
-            </div>,
-            s.revenue > 0 ? `₹${s.revenue.toLocaleString()}` : '—'
+          headers={['Item', 'Current', 'Threshold', 'Gap']}
+          loading={query.isLoading}
+          empty="Nothing low — well stocked!"
+          rows={(data?.lowStock ?? []).map((l) => [
+            <span key="n" className="font-semibold text-gray-900">
+              {l.name}
+            </span>,
+            `${l.currentStock} ${l.unit}`,
+            `${l.threshold} ${l.unit}`,
+            <span key="g" className="text-amber-600 font-bold">
+              {(l.threshold - l.currentStock).toFixed(2)} {l.unit}
+            </span>,
           ])}
         />
       </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <SectionHeader title="Orders Served by Staff" subtitle="Current month comparison" />
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={STAFF_PERFORMANCE} layout="vertical" margin={{ top: 4, right: 20, left: 80, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
-            <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} tickLine={false} axisLine={false} width={80} />
-            <Tooltip formatter={((v: unknown) => [`${Number(v)} orders`, 'Orders Served']) as never} />
-            <Bar dataKey="ordersServed" name="Orders" fill="#ec4899" radius={[0, 6, 6, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
     </div>
   );
 }
 
-// ─── Inventory Tab ────────────────────────────────────────────────────────────
-function InventoryReport() {
-  const critical = INVENTORY_REPORT.filter(i => i.status === 'Critical').length;
-  const low = INVENTORY_REPORT.filter(i => i.status === 'Low').length;
+// ─────────────────────────────────────────────────────────────────────────────
+// Feedback
+// ─────────────────────────────────────────────────────────────────────────────
+function FeedbackTab({ from, to }: { from: string; to: string }) {
+  const query = useFeedbackReport({ from, to });
+  const data = query.data;
+
+  const trendChart = (data?.trend ?? []).map((t) => ({
+    day: t.day.slice(5),
+    count: t.count,
+    rating: t.avgRating,
+  }));
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ReportKpi label="Total Items Tracked" value={INVENTORY_REPORT.length.toString()} />
-        <ReportKpi label="Critical Stock" value={critical.toString()} sub="Immediate reorder needed" positive={false} />
-        <ReportKpi label="Low Stock" value={low.toString()} sub="Order within 24 hours" />
-        <ReportKpi label="Items OK" value={INVENTORY_REPORT.filter(i => i.status === 'OK').length.toString()} sub="Sufficient stock levels" positive={true} />
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <SectionHeader title="Inventory Consumption Report" subtitle="Opening → Closing stock for current period" />
-        <DataTable
-          headers={['Item', 'Unit', 'Opening', 'Consumed', 'Closing', 'Reorder At', 'Status']}
-          rows={INVENTORY_REPORT.map(i => {
-            const statusColor =
-              i.status === 'Critical' ? 'bg-red-50 text-red-600' :
-              i.status === 'Low' ? 'bg-amber-50 text-amber-600' :
-              'bg-emerald-50 text-emerald-600';
-            return [
-              <span className="font-medium">{i.item}</span>,
-              i.unit,
-              `${i.opening} ${i.unit}`,
-              `${i.consumed} ${i.unit}`,
-              <span className={i.closing <= i.reorderAt ? 'font-bold text-red-600' : 'text-gray-700'}>{i.closing} {i.unit}</span>,
-              `${i.reorderAt} ${i.unit}`,
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor}`}>{i.status}</span>
-            ];
-          })}
+    <div className="space-y-4">
+      <div className="grid grid-cols-4 gap-3">
+        <ReportKpi
+          label="Total"
+          value={String(data?.summary.total ?? 0)}
+          icon={Star}
+          color="bg-amber-50 text-amber-600"
+        />
+        <ReportKpi
+          label="Avg Rating"
+          value={data?.summary.avgRating ? data.summary.avgRating.toFixed(2) : '—'}
+          icon={Star}
+          color="bg-emerald-50 text-emerald-600"
+        />
+        <ReportKpi
+          label="Positive / Negative"
+          value={`${data?.summary.positive ?? 0} / ${data?.summary.negative ?? 0}`}
+          sub={`Neutral: ${data?.summary.neutral ?? 0}`}
+          icon={TrendingUp}
+          color="bg-violet-50 text-violet-600"
+        />
+        <ReportKpi
+          label="Channels reporting"
+          value={String((data?.byChannel ?? []).length)}
+          icon={ShoppingBag}
+          color="bg-blue-50 text-blue-600"
         />
       </div>
-    </div>
-  );
-}
 
-// ─── Feedback Tab ────────────────────────────────────────────────────────────
-function FeedbackReport() {
-  const f = FEEDBACK_SUMMARY;
-  const bars = [
-    { stars: 5, count: f.fivestar },
-    { stars: 4, count: f.fourstar },
-    { stars: 3, count: f.threestar },
-    { stars: 2, count: f.twostar },
-    { stars: 1, count: f.onestar },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ReportKpi label="Average Rating" value={`${f.avg}/5`} sub="+0.2 vs last month" positive={true} />
-        <ReportKpi label="Total Reviews" value={f.total.toString()} sub="This month" />
-        <ReportKpi label="5-Star Reviews" value={`${Math.round((f.fivestar / f.total) * 100)}%`} sub={`${f.fivestar} reviews`} positive={true} />
-        <ReportKpi label="Below 3-Star" value={`${f.twostar + f.onestar}`} sub="Need attention" positive={false} />
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        <h3 className="font-semibold text-gray-900 text-sm mb-3">Daily volume & rating</h3>
+        <ResponsiveContainer width="100%" height={220}>
+          {trendChart.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-sm text-gray-400">
+              {query.isLoading ? 'Loading...' : 'No feedback in this range'}
+            </div>
+          ) : (
+            <BarChart data={trendChart}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+              <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
+              <Tooltip />
+              <Bar dataKey="count" name="Reviews" fill="#ec4899" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          )}
+        </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {(data?.tagDistribution ?? []).length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <SectionHeader title="Rating Distribution" subtitle="All customer reviews this month" />
-          <div className="space-y-3">
-            {bars.map(b => (
-              <div key={b.stars} className="flex items-center gap-3 text-xs">
-                <div className="flex items-center gap-0.5 w-14 shrink-0">
-                  {Array.from({ length: b.stars }).map((_, i) => (
-                    <Star key={i} className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  ))}
-                </div>
-                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-amber-400 rounded-full"
-                    style={{ width: `${(b.count / f.total) * 100}%` }}
-                  />
-                </div>
-                <span className="text-gray-400 w-10 text-right">{b.count}</span>
-              </div>
+          <h3 className="font-semibold text-gray-900 text-sm mb-3">Top mentioned tags</h3>
+          <div className="flex flex-wrap gap-2">
+            {data!.tagDistribution.map((t) => (
+              <span
+                key={t.tag}
+                className="text-xs bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-gray-700"
+              >
+                {t.tag} <span className="text-gray-400">×{t.count}</span>
+              </span>
             ))}
           </div>
         </div>
+      )}
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <SectionHeader title="Recent Feedback" subtitle="Latest customer reviews" />
-          <div className="space-y-3 overflow-y-auto max-h-[240px]">
-            {RECENT_FEEDBACK.map((fb, i) => (
-              <div key={i} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-gray-800">{fb.guest}</span>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: fb.rating }).map((_, j) => (
-                      <Star key={j} className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
-                    ))}
-                  </div>
-                </div>
-                <p className="text-[11px] text-gray-600 leading-relaxed">{fb.comment}</p>
-                <p className="text-[10px] text-gray-400 mt-1">Table {fb.table} · {fb.date}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Reports Component ───────────────────────────────────────────────────
-export default function AdminReports() {
-  const [activeTab, setActiveTab] = useState<ReportTab>('sales');
-  const [dateRange, setDateRange] = useState('May 2026');
-
-  const tabs: { id: ReportTab; label: string; icon: React.ElementType }[] = [
-    { id: 'sales',     label: 'Sales',         icon: TrendingUp  },
-    { id: 'tax',       label: 'Tax',           icon: FileText    },
-    { id: 'payments',  label: 'Payments',      icon: CreditCard  },
-    { id: 'staff',     label: 'Staff',         icon: Users       },
-    { id: 'inventory', label: 'Inventory',     icon: Package     },
-    { id: 'feedback',  label: 'Feedback',      icon: Star        },
-  ];
-
-  return (
-    <div className="space-y-6">
-
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Reports & Analytics</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Detailed business insights and performance data</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
-            <Calendar className="w-4 h-4" />
-            <span>{dateRange}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
-            <Download className="w-4 h-4" />
-            Export PDF
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-pink-400 text-white rounded-xl text-sm font-medium hover:bg-pink-500 transition-colors">
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${
-              activeTab === tab.id
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      <div className="animate-[fadeIn_0.2s_ease-out]">
-        {activeTab === 'sales'     && <SalesReport />}
-        {activeTab === 'tax'       && <TaxReport />}
-        {activeTab === 'payments'  && <PaymentsReport />}
-        {activeTab === 'staff'     && <StaffReport />}
-        {activeTab === 'inventory' && <InventoryReport />}
-        {activeTab === 'feedback'  && <FeedbackReport />}
-      </div>
-
+      <DataTable
+        headers={['Channel', 'Reviews', 'Avg Rating']}
+        loading={query.isLoading}
+        empty="No feedback by channel"
+        rows={(data?.byChannel ?? []).map((c) => [
+          <span key="n" className="font-semibold text-gray-900">
+            {c.channel ? CHANNEL_NAMES[c.channel] : 'Unknown'}
+          </span>,
+          c.count,
+          c.avgRating.toFixed(2),
+        ])}
+      />
     </div>
   );
 }

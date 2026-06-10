@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   LayoutDashboard, UtensilsCrossed, QrCode, ShoppingBag, Table2,
   Receipt, Package, Users, Gift, BarChart3, Settings, Shield,
-  ClipboardList, Bell, ChevronLeft, Menu, X, Lock, LogOut, Store
+  ClipboardList, Bell, ChevronLeft, Menu, X, Lock, LogOut, Store, MessageSquare
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useLogout } from '@/hooks/useAuth';
@@ -15,17 +15,47 @@ import AdminTables from './AdminTables';
 import AdminQR from './AdminQR';
 import AdminBilling from './AdminBilling';
 import AdminCustomers from './AdminCustomers';
+import AdminFeedback from './AdminFeedback';
 import AdminLoyalty from './AdminLoyalty';
+import AdminNotifications from './AdminNotifications';
 import AdminSettings from './AdminSettings';
 import AdminUsers from './AdminUsers';
 import AdminAuditLogs from './AdminAuditLogs';
+import RequirePermission from '@/components/auth/RequirePermission';
 
 type AdminModule =
   | 'dashboard' | 'menu' | 'qr' | 'orders' | 'tables'
-  | 'billing' | 'inventory' | 'customers' | 'loyalty'
-  | 'reports' | 'settings' | 'users' | 'audit';
+  | 'billing' | 'inventory' | 'customers' | 'feedback' | 'loyalty'
+  | 'reports' | 'settings' | 'notifications' | 'users' | 'audit';
 
-interface NavItem { id: AdminModule; label: string; icon: React.ElementType; built: boolean; }
+interface NavItem {
+  id: AdminModule;
+  label: string;
+  icon: React.ElementType;
+  built: boolean;
+  /** Permission key(s) required to even see this module. Empty = visible to all. */
+  perm?: string | string[];
+}
+
+// Map each admin module to the backend permission that gates the corresponding API.
+// We deliberately use the *:read permission since each page calls list endpoints first.
+const MODULE_PERMS: Record<AdminModule, string | string[] | undefined> = {
+  dashboard: 'report:read',
+  menu: 'menu:read',
+  qr: 'qr:read',
+  orders: 'order:read',
+  tables: 'table:read',
+  billing: ['billing:read', 'payment:read'],
+  inventory: 'inventory:read',
+  customers: 'customer:read',
+  feedback: 'feedback:read',
+  loyalty: ['discount:read', 'coupon:read', 'loyalty:read'],
+  reports: 'report:read',
+  settings: 'restaurant:read',
+  notifications: 'notification:read',
+  users: ['user:read', 'role:read'],
+  audit: 'audit:read',
+};
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
@@ -49,6 +79,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       { id: 'inventory', label: 'Inventory',          icon: Package,         built: true  },
       { id: 'customers', label: 'Customers',          icon: Users,           built: true  },
+      { id: 'feedback',  label: 'Feedback',           icon: MessageSquare,   built: true  },
       { id: 'loyalty',   label: 'Loyalty & Coupons',  icon: Gift,            built: true  },
     ]
   },
@@ -61,8 +92,9 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: 'System',
     items: [
-      { id: 'settings',  label: 'Restaurant Settings',icon: Settings,        built: true  },
-      { id: 'users',     label: 'User & Role Mgmt',   icon: Shield,          built: true  },
+      { id: 'settings',     label: 'Restaurant Settings',icon: Settings,        built: true  },
+      { id: 'notifications', label: 'Notifications',     icon: Bell,            built: true  },
+      { id: 'users',        label: 'User & Role Mgmt',   icon: Shield,          built: true  },
       { id: 'audit',     label: 'Audit Logs',         icon: ClipboardList,   built: true  },
     ]
   },
@@ -91,7 +123,20 @@ function Sidebar({ active, onNavigate, collapsed, onToggle, onSignOut }: {
   collapsed: boolean; onToggle: () => void; onSignOut: () => void;
 }) {
   const user = useAuthStore((s) => s.user);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
   const initial = (user?.name?.[0] ?? user?.email?.[0] ?? 'A').toUpperCase();
+
+  function canSee(item: NavItem): boolean {
+    const perm = MODULE_PERMS[item.id];
+    if (!perm) return true;
+    const perms = Array.isArray(perm) ? perm : [perm];
+    return perms.some((p) => hasPermission(p));
+  }
+
+  // Filter each group to permitted items; drop groups that become empty.
+  const visibleGroups = NAV_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter(canSee) }))
+    .filter((g) => g.items.length > 0);
   return (
     <aside className={`h-screen bg-black flex flex-col transition-all duration-200 shrink-0 ${collapsed ? 'w-16' : 'w-60'}`}>
       {/* Logo */}
@@ -119,7 +164,7 @@ function Sidebar({ active, onNavigate, collapsed, onToggle, onSignOut }: {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2">
-        {NAV_GROUPS.map(group => (
+        {visibleGroups.map(group => (
           <div key={group.title} className="mb-5">
             {!collapsed && (
               <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-neutral-600 px-3 mb-2">
@@ -243,22 +288,30 @@ export default function AdminPortal({ onExit }: { onExit: () => void }) {
   const isFullHeight = FULL_HEIGHT_MODULES.includes(activeModule);
 
   function renderModule() {
+    let inner: React.ReactNode;
     switch (activeModule) {
-      case 'dashboard': return <AdminDashboard />;
-      case 'reports':   return <AdminReports />;
-      case 'menu':      return <AdminMenuManagement />;
-      case 'inventory': return <AdminInventory />;
-      case 'orders':    return <AdminOrders />;
-      case 'tables':    return <AdminTables />;
-      case 'qr':        return <AdminQR />;
-      case 'billing':   return <AdminBilling />;
-      case 'customers': return <AdminCustomers />;
-      case 'loyalty':   return <AdminLoyalty />;
-      case 'settings':  return <AdminSettings />;
-      case 'users':     return <AdminUsers />;
-      case 'audit':     return <AdminAuditLogs />;
-      default:          return <ComingSoon module={moduleLabel} />;
+      case 'dashboard':     inner = <AdminDashboard />; break;
+      case 'reports':       inner = <AdminReports />; break;
+      case 'menu':          inner = <AdminMenuManagement />; break;
+      case 'inventory':     inner = <AdminInventory />; break;
+      case 'orders':        inner = <AdminOrders />; break;
+      case 'tables':        inner = <AdminTables />; break;
+      case 'qr':            inner = <AdminQR />; break;
+      case 'billing':       inner = <AdminBilling />; break;
+      case 'customers':     inner = <AdminCustomers />; break;
+      case 'feedback':      inner = <AdminFeedback />; break;
+      case 'loyalty':       inner = <AdminLoyalty />; break;
+      case 'settings':      inner = <AdminSettings />; break;
+      case 'notifications': inner = <AdminNotifications />; break;
+      case 'users':         inner = <AdminUsers />; break;
+      case 'audit':         inner = <AdminAuditLogs />; break;
+      default:              inner = <ComingSoon module={moduleLabel} />;
     }
+    const perm = MODULE_PERMS[activeModule];
+    if (perm) {
+      return <RequirePermission perm={perm}>{inner}</RequirePermission>;
+    }
+    return inner;
   }
 
   return (

@@ -29,6 +29,12 @@ import TableOperations from './components/operations/TableOperations';
 import BillingPayments from './components/operations/BillingPayments';
 import QROrderingFlow from './components/customer/QROrderingFlow';
 
+// Guest (public) pages — Phase 12
+import GuestOrderPage from './pages/guest/GuestOrderPage';
+import GuestWindowPage from './pages/guest/GuestWindowPage';
+import GuestTrackPage from './pages/guest/GuestTrackPage';
+import NowServingPage from './pages/guest/NowServingPage';
+
 // Mock data (gradually replaced phase-by-phase as backend wiring lands)
 import {
   INITIAL_ORDERS,
@@ -308,6 +314,12 @@ export default function App() {
             path="/qr-order"
             element={<QROrderingFlow onExit={() => navigate('home')} tableNumber={4} />}
           />
+
+          {/* ── Phase 12: public guest pages ── */}
+          <Route path="/order" element={<GuestOrderPage />} />
+          <Route path="/window" element={<GuestWindowPage />} />
+          <Route path="/track/:orderId" element={<GuestTrackPage />} />
+          <Route path="/now-serving" element={<NowServingPage />} />
           <Route
             path="/vendor"
             element={

@@ -1,45 +1,74 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Search, Filter, Download, Clock, AlertTriangle,
-  CheckCircle, XCircle, ChevronDown, RefreshCw, X
+  Search,
+  Filter,
+  RefreshCw,
+  X,
+  Eye,
+  CalendarRange,
+  User,
+  Activity,
+  FileText,
 } from 'lucide-react';
-import { AUDIT_LOGS, AuditLog } from './adminMockData';
+import { useAuditLogs } from '@/hooks/useAudit';
+import { useUsers } from '@/hooks/useUsers';
+import type { AuditLogDto } from '@/lib/dto/rbac';
 
-const STATUS_PILL: Record<string, string> = {
-  Success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Warning: 'bg-amber-50 text-amber-700 border-amber-200',
-  Failed:  'bg-red-50 text-red-600 border-red-200',
-};
-const STATUS_ICON: Record<string, React.ElementType> = {
-  Success: CheckCircle,
-  Warning: AlertTriangle,
-  Failed:  XCircle,
-};
-const MODULE_COLORS: Record<string, string> = {
-  Billing:   'bg-pink-50 text-pink-700',
-  Orders:    'bg-violet-50 text-violet-700',
-  Menu:      'bg-blue-50 text-blue-700',
-  Inventory: 'bg-amber-50 text-amber-700',
-  Tables:    'bg-emerald-50 text-emerald-700',
-  Settings:  'bg-gray-100 text-gray-600',
-  Staff:     'bg-orange-50 text-orange-700',
-  Auth:      'bg-red-50 text-red-600',
-  Loyalty:   'bg-purple-50 text-purple-700',
-  Coupons:   'bg-teal-50 text-teal-700',
-  Reports:   'bg-indigo-50 text-indigo-700',
+function daysAgo(d: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - d);
+  return date.toISOString().slice(0, 10);
+}
+
+const ENTITY_COLORS: Record<string, string> = {
+  User: 'bg-blue-50 text-blue-700',
+  Role: 'bg-violet-50 text-violet-700',
+  Order: 'bg-pink-50 text-pink-700',
+  Invoice: 'bg-emerald-50 text-emerald-700',
+  Payment: 'bg-emerald-50 text-emerald-700',
+  Item: 'bg-amber-50 text-amber-700',
+  Category: 'bg-amber-50 text-amber-700',
+  Table: 'bg-blue-50 text-blue-700',
+  QrCode: 'bg-violet-50 text-violet-700',
+  InventoryItem: 'bg-orange-50 text-orange-700',
+  Recipe: 'bg-orange-50 text-orange-700',
+  Customer: 'bg-pink-50 text-pink-700',
+  Discount: 'bg-rose-50 text-rose-700',
+  Coupon: 'bg-rose-50 text-rose-700',
+  Feedback: 'bg-amber-50 text-amber-700',
+  Restaurant: 'bg-gray-100 text-gray-700',
+  NotificationTemplate: 'bg-purple-50 text-purple-700',
+  LoyaltyAccount: 'bg-pink-50 text-pink-700',
+  LoyaltyConfig: 'bg-pink-50 text-pink-700',
 };
 
-const ALL_MODULES = ['All', ...Array.from(new Set(AUDIT_LOGS.map(l => l.module)))];
-const ALL_STATUSES = ['All', 'Success', 'Warning', 'Failed'];
-const ALL_ROLES = ['All', ...Array.from(new Set(AUDIT_LOGS.map(l => l.role).filter(r => r !== '—')))];
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) {
+    return `Today ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  }
+  return d.toLocaleString();
+}
 
-function KpiCard({ label, value, color, icon: Icon }:
-  { label: string; value: string | number; color: string; icon: React.ElementType }) {
+function KpiCard({
+  label,
+  value,
+  icon: Icon,
+  color,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ElementType;
+  color: string;
+}) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex items-center gap-3">
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${color}`}><Icon className="w-4.5 h-4.5 w-[18px] h-[18px]" /></div>
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm flex items-center gap-3">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+        <Icon className="w-5 h-5" />
+      </div>
       <div>
-        <p className="text-lg font-bold text-gray-900">{value}</p>
+        <p className="text-xl font-bold text-gray-900">{value}</p>
         <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{label}</p>
       </div>
     </div>
@@ -48,190 +77,339 @@ function KpiCard({ label, value, color, icon: Icon }:
 
 export default function AdminAuditLogs() {
   const [search, setSearch] = useState('');
-  const [moduleFilter, setModuleFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [roleFilter, setRoleFilter] = useState('All');
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [actorId, setActorId] = useState<string>('all');
+  const [entity, setEntity] = useState<string>('all');
+  const [action, setAction] = useState<string>('all');
+  const [from, setFrom] = useState(daysAgo(6));
+  const [to, setTo] = useState(daysAgo(0));
+  const [detail, setDetail] = useState<AuditLogDto | null>(null);
 
-  const filtered = useMemo(() => {
-    return AUDIT_LOGS.filter(l => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || l.user.toLowerCase().includes(q) || l.action.toLowerCase().includes(q)
-        || l.details.toLowerCase().includes(q) || l.module.toLowerCase().includes(q);
-      const matchModule = moduleFilter === 'All' || l.module === moduleFilter;
-      const matchStatus = statusFilter === 'All' || l.status === statusFilter;
-      const matchRole   = roleFilter === 'All'   || l.role === roleFilter;
-      return matchSearch && matchModule && matchStatus && matchRole;
-    });
-  }, [search, moduleFilter, statusFilter, roleFilter]);
+  const logsQuery = useAuditLogs({
+    actorId: actorId !== 'all' ? actorId : undefined,
+    entity: entity !== 'all' ? entity : undefined,
+    action: action !== 'all' ? action : undefined,
+    from: from || undefined,
+    to: to ? new Date(`${to}T23:59:59`).toISOString() : undefined,
+    limit: 200,
+  });
+  const usersQuery = useUsers({ limit: 100 });
 
-  const successCount = AUDIT_LOGS.filter(l => l.status === 'Success').length;
-  const warningCount = AUDIT_LOGS.filter(l => l.status === 'Warning').length;
-  const failedCount  = AUDIT_LOGS.filter(l => l.status === 'Failed').length;
+  const logs = logsQuery.data?.items ?? [];
+  const users = usersQuery.data?.items ?? [];
 
-  const hasFilters = moduleFilter !== 'All' || statusFilter !== 'All' || roleFilter !== 'All' || search;
+  const filteredLogs = useMemo(() => {
+    if (!search.trim()) return logs;
+    const q = search.toLowerCase();
+    return logs.filter(
+      (l) =>
+        l.action.toLowerCase().includes(q) ||
+        l.entity.toLowerCase().includes(q) ||
+        (l.actorEmail ?? '').toLowerCase().includes(q) ||
+        (l.entityId ?? '').toLowerCase().includes(q),
+    );
+  }, [logs, search]);
 
-  function clearFilters() {
-    setSearch(''); setModuleFilter('All'); setStatusFilter('All'); setRoleFilter('All');
-  }
+  // KPI totals
+  const kpis = useMemo(() => {
+    const actions = new Set(logs.map((l) => l.action));
+    const entities = new Set(logs.map((l) => l.entity));
+    const actors = new Set(logs.map((l) => l.actorId).filter(Boolean));
+    return {
+      total: logs.length,
+      actions: actions.size,
+      entities: entities.size,
+      actors: actors.size,
+    };
+  }, [logs]);
+
+  // Distinct values for filter dropdowns
+  const distinctEntities = useMemo(
+    () => Array.from(new Set(logs.map((l) => l.entity))).sort(),
+    [logs],
+  );
+  const distinctActions = useMemo(
+    () => Array.from(new Set(logs.map((l) => l.action))).sort(),
+    [logs],
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Audit Logs</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Complete activity history across all modules</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Full history of every privileged action with before/after diffs
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => {}} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
-            <RefreshCw className="w-4 h-4" /> Refresh
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
-            <Download className="w-4 h-4" /> Export CSV
-          </button>
-        </div>
+        <button
+          onClick={() => logsQuery.refetch()}
+          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
+        >
+          <RefreshCw className={`w-4 h-4 ${logsQuery.isFetching ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Total Events" value={AUDIT_LOGS.length} color="bg-blue-50 text-blue-600" icon={Clock} />
-        <KpiCard label="Successful"   value={successCount}      color="bg-emerald-50 text-emerald-600" icon={CheckCircle} />
-        <KpiCard label="Warnings"     value={warningCount}      color="bg-amber-50 text-amber-600"  icon={AlertTriangle} />
-        <KpiCard label="Failed"       value={failedCount}       color="bg-red-50 text-red-600"      icon={XCircle} />
+        <KpiCard label="Events" value={kpis.total} icon={Activity} color="bg-pink-50 text-pink-600" />
+        <KpiCard
+          label="Distinct Actions"
+          value={kpis.actions}
+          icon={Activity}
+          color="bg-violet-50 text-violet-600"
+        />
+        <KpiCard
+          label="Entities Touched"
+          value={kpis.entities}
+          icon={FileText}
+          color="bg-blue-50 text-blue-600"
+        />
+        <KpiCard
+          label="Active Actors"
+          value={kpis.actors}
+          icon={User}
+          color="bg-emerald-50 text-emerald-600"
+        />
       </div>
 
-      {/* Search + Filter bar */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+          <div className="relative">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search by user, action, module, or details..."
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-pink-400 bg-gray-50" />
-            {search && <button onClick={() => setSearch('')} className="absolute right-3 top-2.5"><X className="w-4 h-4 text-gray-400 hover:text-gray-600" /></button>}
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search action, entity, email..."
+              className="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-pink-400 bg-gray-50 w-64"
+            />
           </div>
-          <button onClick={() => setShowFilters(p => !p)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${showFilters ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            <Filter className="w-4 h-4" /> Filters
-            {hasFilters && <span className="w-2 h-2 rounded-full bg-pink-500" />}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={actorId}
+              onChange={(e) => setActorId(e.target.value)}
+              className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-pink-400 bg-gray-50"
+            >
+              <option value="all">Any actor</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.email})
+                </option>
+              ))}
+            </select>
+            <select
+              value={entity}
+              onChange={(e) => setEntity(e.target.value)}
+              className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-pink-400 bg-gray-50"
+            >
+              <option value="all">Any entity</option>
+              {distinctEntities.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-pink-400 bg-gray-50"
+            >
+              <option value="all">Any action</option>
+              {distinctActions.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-xl px-2">
+              <CalendarRange className="w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="text-xs bg-transparent focus:outline-none px-1 py-1.5"
+              />
+              <span className="text-xs text-gray-400">→</span>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="text-xs bg-transparent focus:outline-none px-1 py-1.5"
+              />
+            </div>
+          </div>
+          <span className="text-xs text-gray-400 ml-auto">
+            {logsQuery.isLoading ? 'Loading...' : `${filteredLogs.length} of ${logs.length} events`}
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                {['When', 'Actor', 'Action', 'Entity', 'Entity ID', ''].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 py-3 whitespace-nowrap"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filteredLogs.map((log) => (
+                <tr key={log._id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                    {formatTime(log.at)}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs">
+                    {log.actorEmail ? (
+                      <>
+                        <p className="font-semibold text-gray-700 truncate max-w-[180px]">
+                          {log.actorEmail}
+                        </p>
+                        {log.actorRole && (
+                          <p className="text-[10px] text-gray-400 uppercase">{log.actorRole}</p>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-400 italic">system</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <code className="text-[11px] font-mono text-gray-800">{log.action}</code>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        ENTITY_COLORS[log.entity] ?? 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {log.entity}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {log.entityId ? (
+                      <code className="text-[10px] text-gray-400 font-mono">
+                        {log.entityId.slice(-8)}
+                      </code>
+                    ) : (
+                      <span className="text-[10px] text-gray-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {(log.before !== undefined || log.after !== undefined || log.metadata) && (
+                      <button
+                        onClick={() => setDetail(log)}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                        title="View diff"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!logsQuery.isLoading && filteredLogs.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">
+                    No audit events match your filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {detail && <AuditDetailDrawer log={detail} onClose={() => setDetail(null)} />}
+    </div>
+  );
+}
+
+function AuditDetailDrawer({ log, onClose }: { log: AuditLogDto; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white shadow-2xl h-full overflow-y-auto z-10">
+        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider">
+              Audit Event
+            </p>
+            <h3 className="font-bold text-gray-900 truncate">
+              <code className="text-sm font-mono">{log.action}</code>
+            </h3>
+          </div>
+          <button onClick={onClose}>
+            <X className="w-5 h-5 text-gray-400" />
           </button>
-          {hasFilters && (
-            <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-pink-600 transition-colors font-medium">Clear all</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          <div className="grid grid-cols-2 gap-3">
+            <Info label="When" value={new Date(log.at).toLocaleString()} />
+            <Info label="Actor" value={log.actorEmail ?? 'system'} />
+            <Info label="Actor Role" value={log.actorRole ?? '—'} />
+            <Info label="Entity" value={log.entity} />
+            <Info label="Entity ID" value={log.entityId ?? '—'} mono />
+            <Info label="IP" value={log.ip ?? '—'} mono />
+            <Info label="Request ID" value={log.requestId ?? '—'} mono />
+          </div>
+
+          {log.metadata && Object.keys(log.metadata).length > 0 && (
+            <DiffSection title="Metadata" data={log.metadata} />
+          )}
+
+          {(log.before !== undefined || log.after !== undefined) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {log.before !== undefined && (
+                <DiffSection title="Before" data={log.before} tone="red" />
+              )}
+              {log.after !== undefined && (
+                <DiffSection title="After" data={log.after} tone="emerald" />
+              )}
+            </div>
           )}
         </div>
-
-        {showFilters && (
-          <div className="flex flex-wrap gap-3 pt-2 border-t border-gray-100">
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Module</label>
-              <select value={moduleFilter} onChange={e => setModuleFilter(e.target.value)}
-                className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-pink-400 bg-white min-w-[130px]">
-                {ALL_MODULES.map(m => <option key={m}>{m}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</label>
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-pink-400 bg-white min-w-[120px]">
-                {ALL_STATUSES.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Role</label>
-              <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
-                className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-pink-400 bg-white min-w-[130px]">
-                {ALL_ROLES.map(r => <option key={r}>{r}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1 justify-end">
-              <span className="text-xs text-gray-400 mb-2">{filtered.length} of {AUDIT_LOGS.length} results</span>
-            </div>
-          </div>
-        )}
       </div>
+    </div>
+  );
+}
 
-      {/* Logs Table */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
-              {['Timestamp', 'User', 'Module', 'Action', 'Status', 'IP Address', ''].map(h => (
-                <th key={h} className="text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filtered.map(log => {
-              const Icon = STATUS_ICON[log.status];
-              const isExpanded = expanded === log.id;
-              return (
-                <>
-                  <tr key={log.id} className={`hover:bg-gray-50 transition-colors cursor-pointer ${isExpanded ? 'bg-gray-50' : ''}`}
-                    onClick={() => setExpanded(isExpanded ? null : log.id)}>
-                    <td className="px-4 py-3 text-xs text-gray-500 font-mono whitespace-nowrap">{log.timestamp}</td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-gray-900 text-xs">{log.user}</p>
-                        <p className="text-[10px] text-gray-400">{log.role}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${MODULE_COLORS[log.module] || 'bg-gray-100 text-gray-600'}`}>
-                        {log.module}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-700 font-medium whitespace-nowrap">{log.action}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="w-3.5 h-3.5" style={{
-                          color: log.status === 'Success' ? '#059669' : log.status === 'Warning' ? '#d97706' : '#dc2626'
-                        }} />
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_PILL[log.status]}`}>{log.status}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[10px] text-gray-400">{log.ip}</td>
-                    <td className="px-4 py-3">
-                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr key={`${log.id}-detail`} className="bg-blue-50/30">
-                      <td colSpan={7} className="px-4 py-3">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${log.status === 'Success' ? 'bg-emerald-500' : log.status === 'Warning' ? 'bg-amber-400' : 'bg-red-500'}`} />
-                          <div>
-                            <p className="text-xs font-semibold text-gray-700 mb-0.5">Event Details</p>
-                            <p className="text-xs text-gray-600 leading-relaxed">{log.details}</p>
-                            <div className="flex gap-4 mt-2 text-[10px] text-gray-400">
-                              <span>Event ID: {log.id}</span>
-                              <span>IP: {log.ip}</span>
-                              <span>Role: {log.role}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
-              );
-            })}
-          </tbody>
-        </table>
+function Info({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider">{label}</p>
+      <p className={`text-sm text-gray-800 ${mono ? 'font-mono text-xs' : ''} truncate`}>{value}</p>
+    </div>
+  );
+}
 
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Search className="w-8 h-8 text-gray-300 mb-3" />
-            <p className="text-sm text-gray-500">No logs match your filters</p>
-            <button onClick={clearFilters} className="mt-2 text-sm text-pink-600 hover:underline font-medium">Clear filters</button>
-          </div>
-        )}
-
-        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-          <p className="text-xs text-gray-400">Showing {filtered.length} of {AUDIT_LOGS.length} log entries</p>
-          <button className="text-xs text-pink-600 hover:underline font-medium">Load more</button>
-        </div>
+function DiffSection({
+  title,
+  data,
+  tone,
+}: {
+  title: string;
+  data: unknown;
+  tone?: 'red' | 'emerald';
+}) {
+  const headerStyle =
+    tone === 'red'
+      ? 'bg-red-50 text-red-700 border-red-200'
+      : tone === 'emerald'
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        : 'bg-gray-50 text-gray-700 border-gray-200';
+  return (
+    <div className={`rounded-xl border overflow-hidden ${headerStyle}`}>
+      <div className="px-3 py-1.5 border-b border-current/10">
+        <p className="text-[10px] uppercase font-bold tracking-wider">{title}</p>
       </div>
+      <pre className="text-[11px] font-mono p-3 bg-white text-gray-800 overflow-x-auto max-h-96 whitespace-pre-wrap break-words">
+        {JSON.stringify(data, null, 2)}
+      </pre>
     </div>
   );
 }
