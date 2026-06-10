@@ -1,0 +1,8 @@
+{
+  "name": "SmartDine",
+  "description": "A beautifully cute, minimalist pastel food delivery landing page for a modern American diner, featuring tiny fonts and a custom food builder.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
