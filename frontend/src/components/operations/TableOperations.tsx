@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowLeft, Users, Clock, CheckCircle2, AlertCircle,
   Sparkles, CreditCard, Merge, MoveRight, Scissors,
   X, ChevronRight, Eye, RefreshCw
 } from 'lucide-react';
+import FloorPlanView, { type TableOccupant } from '@/components/floorplan/FloorPlanView';
+import type { TableDto, TableStatus as BackendTableStatus } from '@/lib/dto/tables';
 
 type TableStatus = 'vacant' | 'seated' | 'ordered' | 'awaiting-bill' | 'cleaning';
 
@@ -213,81 +215,13 @@ export default function TableOperations({ onExit }: { onExit: () => void }) {
             ))}
           </div>
 
-          {/* Zones */}
-          {zones.map(zone => {
-            const zoneTables = tables.filter(t => t.zone === zone);
-            return (
-              <div key={zone}>
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-[#1a1a1a]/40">{zone}</span>
-                  <div className="flex-1 h-px bg-[rgba(26,26,26,0.08)]" />
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-                  {zoneTables.map(table => {
-                    const cfg = STATUS_CONFIG[table.status];
-                    const Icon = cfg.icon;
-                    const isSelected = selectedId === table.id;
-                    const isActionTarget = (actionMode === 'merge-select' || actionMode === 'move-select') && selectedId !== table.id;
-                    return (
-                      <button
-                        key={table.id}
-                        onClick={() => handleTableClick(table)}
-                        className={`relative rounded-xl border-2 p-3 text-left transition-all cursor-pointer group
-                          ${isSelected
-                            ? 'border-pink-400 bg-pink-50 shadow-md shadow-pink-100'
-                            : isActionTarget
-                              ? 'border-dashed border-blue-300 bg-blue-50 hover:border-blue-500 hover:bg-blue-100'
-                              : `${cfg.border} ${cfg.bg} hover:shadow-sm`
-                          }
-                        `}
-                      >
-                        {/* Table number */}
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <span className="text-[18px] font-bold text-neutral-800 leading-none">{table.label}</span>
-                            <div className="text-[9px] font-mono text-neutral-400 mt-0.5 uppercase">{table.capacity}-seat</div>
-                          </div>
-                          <Icon className={`w-4 h-4 ${cfg.text} mt-0.5`} />
-                        </div>
-
-                        {/* Status badge */}
-                        <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-medium ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
-                          <div className={`w-1 h-1 rounded-full ${cfg.dot}`} />
-                          {cfg.label}
-                        </div>
-
-                        {/* Guest info */}
-                        {table.customerName && (
-                          <p className="text-[10px] text-neutral-700 font-medium mt-1.5 leading-snug truncate">
-                            {table.customerName}
-                          </p>
-                        )}
-                        {table.serverName && (
-                          <p className="text-[9px] text-neutral-400 truncate">{table.serverName}</p>
-                        )}
-                        {table.seatedMins != null && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <Clock className="w-2.5 h-2.5 text-neutral-400" />
-                            <span className="text-[9px] font-mono text-neutral-400">{table.seatedMins}m</span>
-                          </div>
-                        )}
-                        {table.orderTotal != null && (
-                          <p className="text-[11px] font-mono font-bold text-neutral-800 mt-1">
-                            ₹{(table.orderTotal * 83).toFixed(0)}
-                          </p>
-                        )}
-
-                        {/* Selected indicator */}
-                        {isSelected && (
-                          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-pink-500" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          {/* Live floor plan */}
+          <FloorTopDown
+            tables={tables}
+            selectedId={selectedId}
+            actionMode={actionMode}
+            onTableClick={(id) => handleTableClick(tables.find((t) => t.id === id)!)}
+          />
         </div>
 
         {/* Sidebar: Selected Table Actions */}
@@ -475,5 +409,75 @@ function InfoRow({ label, value, highlight }: { label: string; value: string; hi
         {value}
       </span>
     </div>
+  );
+}
+
+/**
+ * Adapter — bridges the legacy mock FloorTable shape to the shared
+ * FloorPlanView. Mock data has a "awaiting-bill" status (dash) which the
+ * backend DTO calls "awaiting_bill" (underscore). We normalize on the fly.
+ */
+function FloorTopDown({
+  tables,
+  selectedId,
+  actionMode,
+  onTableClick,
+}: {
+  tables: FloorTable[];
+  selectedId: string | null;
+  actionMode: ActionMode;
+  onTableClick: (id: string) => void;
+}) {
+  const dtoTables = useMemo<TableDto[]>(
+    () =>
+      tables.map((t) => ({
+        _id: t.id,
+        number: t.label,
+        zone: t.zone,
+        capacity: t.capacity,
+        status: (t.status === 'awaiting-bill' ? 'awaiting_bill' : t.status) as BackendTableStatus,
+        shape: t.shape,
+        position: undefined,
+        currentSessionId: undefined,
+        mergedWithTableIds: [],
+        sortOrder: 0,
+        isActive: true,
+        createdAt: '',
+        updatedAt: '',
+      })),
+    [tables],
+  );
+
+  const occupants = useMemo<Record<string, TableOccupant>>(() => {
+    const map: Record<string, TableOccupant> = {};
+    tables.forEach((t) => {
+      if (!t.customerName && !t.serverName) return;
+      map[t.id] = {
+        name: t.customerName,
+        serverName: t.serverName,
+        seatedMins: t.seatedMins,
+        // Convert mock USD to INR-ish display
+        runningTotal: t.orderTotal != null ? t.orderTotal * 83 : undefined,
+        itemCount: t.itemCount,
+        guestCount: t.status === 'vacant' || t.status === 'cleaning' ? 0 : Math.max(1, Math.min(t.capacity, 2)),
+      };
+    });
+    return map;
+  }, [tables]);
+
+  const highlightedIds = useMemo(() => {
+    if (!actionMode || !selectedId) return undefined;
+    // Only vacant tables are valid action targets
+    return new Set(tables.filter((t) => t.status === 'vacant' && t.id !== selectedId).map((t) => t.id));
+  }, [actionMode, selectedId, tables]);
+
+  return (
+    <FloorPlanView
+      tables={dtoTables}
+      occupants={occupants}
+      selectedId={selectedId}
+      highlightedIds={highlightedIds}
+      onTableClick={(t) => onTableClick(t._id)}
+    />
   );
 }

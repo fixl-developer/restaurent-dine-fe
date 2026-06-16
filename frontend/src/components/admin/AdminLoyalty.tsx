@@ -54,6 +54,7 @@ import {
   customerInitials,
   type CustomerDto,
 } from '@/lib/dto/customers';
+import { confirmToast } from '@/lib/confirmToast';
 
 type LoyaltyTab = 'discounts' | 'coupons' | 'config' | 'members';
 
@@ -180,7 +181,7 @@ function DiscountsTab() {
             }
             onEdit={() => setEditing(d)}
             onDelete={async () => {
-              if (confirm(`Delete "${d.name}"?`)) {
+              if (await confirmToast({ title: `Delete "${d.name}"?`, destructive: true })) {
                 await deleteDiscount.mutateAsync(d._id);
               }
             }}
@@ -662,7 +663,7 @@ function CouponsTab() {
                         </button>
                         <button
                           onClick={async () => {
-                            if (confirm(`Delete "${c.code}"?`)) {
+                            if (await confirmToast({ title: `Delete "${c.code}"?`, destructive: true })) {
                               await deleteCoupon.mutateAsync(c._id);
                             }
                           }}

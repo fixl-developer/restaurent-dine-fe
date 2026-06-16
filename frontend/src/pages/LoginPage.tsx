@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { Mail, Lock, ArrowRight, ShieldCheck, Coffee, Loader2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck, Coffee, Loader2, Sparkles } from 'lucide-react';
+
+const DEMO_CREDENTIALS = {
+  email: 'owner@smartdine.local',
+  password: 'Owner@12345',
+};
 import { useAuthStore } from '@/stores/auth.store';
 import { useStaffLogin, useStaffVerify2fa } from '@/hooks/useAuth';
 
@@ -58,6 +63,18 @@ export default function LoginPage() {
     verifyMutation.mutate({ userId: mfa.userId, code: values.code });
   };
 
+  const fillDemoAndSignIn = () => {
+    loginForm.setValue('email', DEMO_CREDENTIALS.email);
+    loginForm.setValue('password', DEMO_CREDENTIALS.password);
+    loginMutation.mutate(DEMO_CREDENTIALS, {
+      onSuccess: (data) => {
+        if (data.mfaRequired) {
+          setMfa({ userId: data.userId, maskedPhone: data.maskedPhone });
+        }
+      },
+    });
+  };
+
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 py-10 selection:bg-pink-100 selection:text-pink-600"
@@ -98,6 +115,31 @@ export default function LoginPage() {
 
           {!mfa ? (
             <form onSubmit={loginForm.handleSubmit(onSubmitLogin)} className="px-7 pb-7 pt-5 space-y-4">
+              {/* Quick demo credentials shortcut */}
+              <button
+                type="button"
+                onClick={fillDemoAndSignIn}
+                disabled={loginMutation.isPending}
+                className="w-full group flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-50 to-amber-50 border border-pink-200 hover:border-pink-400 hover:shadow-sm transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Sparkles className="w-4 h-4 text-pink-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-neutral-800">Try the demo</p>
+                    <p className="text-[10px] text-neutral-500 truncate">
+                      {DEMO_CREDENTIALS.email}
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-pink-500 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-neutral-200" />
+                <span className="text-[10px] uppercase tracking-widest text-neutral-400">or sign in</span>
+                <div className="flex-1 h-px bg-neutral-200" />
+              </div>
+
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
                   Email

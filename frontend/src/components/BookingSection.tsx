@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Calendar, Users, CheckCircle, ArrowRight } from 'lucide-react';
+import { Calendar, Users, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { FOOD_IMAGES } from '../foodData';
+import { useCreateGuestReservation } from '../hooks/useReservations';
 
 // ── Small decorative food circle ─────────────────────────────────────────────
 const FoodCircle = ({ src, size, style }: { src: string; size: number; style?: React.CSSProperties }) => (
@@ -23,7 +24,9 @@ interface BookingSectionProps {
 }
 
 export default function BookingSection({ onSuccess }: BookingSectionProps) {
-  const [date,    setDate]    = useState('2026-06-01');
+  // Default date = today so users don't get a stale prefill.
+  const today = new Date().toISOString().slice(0, 10);
+  const [date,    setDate]    = useState(today);
   const [time,    setTime]    = useState('18:30');
   const [guests,  setGuests]  = useState('2');
   const [seating, setSeating] = useState('Indoor Lounge');
@@ -34,6 +37,8 @@ export default function BookingSection({ onSuccess }: BookingSectionProps) {
   const [bookingId,  setBookingId]  = useState('');
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
+  const createReservation = useCreateGuestReservation();
+
   const timeSlots = ['17:00','17:30','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
   const seatingOptions = [
     { id: 'indoor',  name: 'Indoor Lounge',  desc: 'Comfortable indoor seating'          },
@@ -42,13 +47,28 @@ export default function BookingSection({ onSuccess }: BookingSectionProps) {
     { id: 'counter', name: "Chef's Counter", desc: 'Counter seating with kitchen view'   },
   ];
 
-  const handleBook = (e: React.FormEvent) => {
+  const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email) { alert('Please fill in your name and email.'); return; }
-    const id = `RES-${Math.floor(100000 + Math.random() * 900000)}`;
-    setBookingId(id);
-    setIsBooked(true);
-    onSuccess?.({ id, name, email, date, time, guests, seating, notes });
+    try {
+      const reservation = await createReservation.mutateAsync({
+        name,
+        email,
+        date,
+        time,
+        partySize: Number(guests),
+        seatingPreference: seating,
+        notes: notes || undefined,
+      });
+      setBookingId(reservation.reservationNumber);
+      setIsBooked(true);
+      onSuccess?.({
+        id: reservation.reservationNumber,
+        name, email, date, time, guests, seating, notes,
+      });
+    } catch {
+      // hook already toasts on error
+    }
   };
   const handleReset = () => { setIsBooked(false); setName(''); setEmail(''); setNotes(''); };
 
@@ -266,11 +286,21 @@ export default function BookingSection({ onSuccess }: BookingSectionProps) {
                 {/* Submit */}
                 <button
                   type="submit"
-                  className="cursor-pointer border-none transition-opacity hover:opacity-80 flex items-center justify-center gap-2"
+                  disabled={createReservation.isPending}
+                  className="cursor-pointer border-none transition-opacity hover:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   style={{ width: '100%', background: '#E8447A', color: 'white', fontSize: 10, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', padding: '14px 16px', borderRadius: 100, fontFamily: 'inherit' }}
                 >
-                  <span>Reserve Table</span>
-                  <ArrowRight style={{ width: 14, height: 14 }} />
+                  {createReservation.isPending ? (
+                    <>
+                      <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" />
+                      <span>Reserving…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Reserve Table</span>
+                      <ArrowRight style={{ width: 14, height: 14 }} />
+                    </>
+                  )}
                 </button>
                 <p style={{ fontSize: 9, color: 'rgba(26,26,26,.4)', textAlign: 'center', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
                   No credit card deposit required

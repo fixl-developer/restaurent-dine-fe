@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Users, Clock, X, GitMerge, MoveRight, Plus, Loader2, Split, Trash2 } from 'lucide-react';
+import { Users, Clock, X, GitMerge, MoveRight, Plus, Loader2, Split, Trash2, LayoutGrid, Map as MapIcon, Edit3, Save } from 'lucide-react';
 import {
   useTables, useTableStatus, useCreateTable, useBulkCreateTables, useDeleteTable,
   useMergeTables, useSplitTable, useMoveTableSession, useOpenTableSession,
+  useUpdateTable,
 } from '@/hooks/useTables';
 import { useSocket } from '@/hooks/useSocket';
 import {
   TABLE_STATUSES, TABLE_STATUS_LABELS, type TableDto, type TableStatus,
 } from '@/lib/dto/tables';
+import { confirmToast } from '@/lib/confirmToast';
+import FloorPlanView, { type TableOccupant } from '@/components/floorplan/FloorPlanView';
 
 const STATUS_CONFIG: Record<TableStatus, { bg: string; border: string; text: string; badge: string; dot: string }> = {
   vacant:        { bg: 'bg-white',     border: 'border-gray-200', text: 'text-gray-500',   badge: 'bg-gray-50 text-gray-500 border-gray-200',     dot: 'bg-gray-300'  },
@@ -21,6 +24,10 @@ const STATUS_CONFIG: Record<TableStatus, { bg: string; border: string; text: str
 export default function AdminTables() {
   const qc = useQueryClient();
   const { data: tables = [], isLoading } = useTables({ includeInactive: false });
+
+  const [viewMode, setViewMode] = useState<'plan' | 'grid'>('plan');
+  const [editLayout, setEditLayout] = useState(false);
+  const updateMutation = useUpdateTable();
 
   const statusMutation = useTableStatus();
   const createMutation = useCreateTable();
@@ -106,8 +113,13 @@ export default function AdminTables() {
       onSuccess: () => { setBulkInput({ prefix: 'T-', count: 5, zone: '', capacity: 4 }); setBulkOpen(false); },
     });
   }
-  function handleDeleteTable(table: TableDto) {
-    if (!confirm(`Delete table "${table.number}"?`)) return;
+  async function handleDeleteTable(table: TableDto) {
+    const ok = await confirmToast({
+      title: `Delete table "${table.number}"?`,
+      description: 'This action cannot be undone.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteMutation.mutate(table._id, { onSuccess: () => setSelected(null) });
   }
   function handleSplit(table: TableDto) {
@@ -130,7 +142,37 @@ export default function AdminTables() {
           <h1 className="text-xl font-bold text-gray-900">Table Management</h1>
           <p className="text-sm text-gray-500 mt-0.5">Restaurant floor layout — real-time table status</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex bg-gray-100 rounded-xl p-1">
+            <button
+              onClick={() => { setViewMode('plan'); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                viewMode === 'plan' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <MapIcon className="w-3.5 h-3.5" /> Floor Plan
+            </button>
+            <button
+              onClick={() => { setViewMode('grid'); setEditLayout(false); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                viewMode === 'grid' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> Grid
+            </button>
+          </div>
+          {viewMode === 'plan' && (
+            <button
+              onClick={() => setEditLayout((e) => !e)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                editLayout
+                  ? 'bg-pink-500 text-white border-pink-500'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {editLayout ? <><Save className="w-3.5 h-3.5" /> Done editing</> : <><Edit3 className="w-3.5 h-3.5" /> Edit layout</>}
+            </button>
+          )}
           <button onClick={() => setBulkOpen(true)} className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
             Bulk Add
           </button>
@@ -173,6 +215,21 @@ export default function AdminTables() {
           <p className="text-sm text-gray-500">No tables yet</p>
           <button onClick={() => setAddOpen(true)} className="text-sm text-pink-600 hover:underline mt-2">Add your first table</button>
         </div>
+      ) : viewMode === 'plan' ? (
+        <FloorPlanView
+          tables={visible}
+          editable={editLayout}
+          selectedId={selected?._id ?? null}
+          highlightedIds={
+            mergeWith
+              ? new Set(visible.filter((t) => t._id !== mergeWith && t.status === 'vacant').map((t) => t._id))
+              : moveFrom
+                ? new Set(visible.filter((t) => t._id !== moveFrom && t.status === 'vacant').map((t) => t._id))
+                : undefined
+          }
+          onTableClick={(t) => handleClickTable(t)}
+          onPositionChange={(id, position) => updateMutation.mutate({ id, patch: { position } })}
+        />
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {[...visible].sort((a, b) => a.sortOrder - b.sortOrder || a.number.localeCompare(b.number)).map((table) => {

@@ -44,6 +44,7 @@ import {
   type NotificationTemplateDto,
   type PreviewTemplateResult,
 } from '@/lib/dto/notifications';
+import { confirmToast } from '@/lib/confirmToast';
 
 type Tab = 'templates' | 'logs';
 
@@ -141,7 +142,10 @@ function TemplatesTab() {
               toast.error('System templates can\'t be deleted. Disable them instead.');
               return;
             }
-            if (confirm(`Delete ${event.key} (${template.channel}) template?`)) {
+            if (await confirmToast({
+              title: `Delete ${event.key} (${template.channel}) template?`,
+              destructive: true,
+            })) {
               await deleteTemplate.mutateAsync(template._id);
             }
           }}

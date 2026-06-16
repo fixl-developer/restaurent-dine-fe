@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import CartDrawer from './components/CartDrawer';
@@ -6,6 +6,11 @@ import CheckoutModal from './components/CheckoutModal';
 import LoginPage from './pages/LoginPage';
 import RequireAuth from './components/auth/RequireAuth';
 import { useMe } from './hooks/useAuth';
+import { usePublicMenu, usePlaceDineInOrder } from './hooks/useGuest';
+import { usePublicFeedback } from './hooks/useFeedback';
+import { usePublicRestaurant } from './hooks/useRestaurant';
+import { usePublicLandingContent } from './hooks/useLandingContent';
+import { toast } from 'sonner';
 import {
   CartItem,
   MenuItem,
@@ -34,6 +39,11 @@ import GuestOrderPage from './pages/guest/GuestOrderPage';
 import GuestWindowPage from './pages/guest/GuestWindowPage';
 import GuestTrackPage from './pages/guest/GuestTrackPage';
 import NowServingPage from './pages/guest/NowServingPage';
+
+// Landing sub-pages (menu / reserve / combos as separate routes)
+import MenuPage from './pages/landing/MenuPage';
+import ReservePage from './pages/landing/ReservePage';
+import CombosPage from './pages/landing/CombosPage';
 
 // Mock data (gradually replaced phase-by-phase as backend wiring lands)
 import {
@@ -97,6 +107,49 @@ export default function App() {
     totalCost: number;
     itemsList?: CartItem[];
   }>({ address: '', notes: '', totalCost: 0 });
+
+  // ==========================================
+  // Public menu — backend-driven for the landing page.
+  // Vendor dashboard still uses local mutable state below until it gets its
+  // own admin-menu wiring.
+  // ==========================================
+  const publicMenuQuery = usePublicMenu({ channel: 'dine_in' });
+  const publicFeedbackQuery = usePublicFeedback({ limit: 12, minRating: 4 });
+  const publicRestaurantQuery = usePublicRestaurant();
+  const landingContentQuery = usePublicLandingContent();
+  const placeOrder = usePlaceDineInOrder();
+
+  const { landingMenuItems, landingCategories } = useMemo(() => {
+    const data = publicMenuQuery.data;
+    if (!data || data.categories.length === 0) {
+      // No backend menu yet → empty arrays so UI shows proper empty states
+      // instead of fake hardcoded MENU_ITEMS.
+      return {
+        landingMenuItems: [] as MenuItem[],
+        landingCategories: null as
+          | null
+          | Array<{ id: string; label: string }>,
+      };
+    }
+    const items: MenuItem[] = data.categories.flatMap((cat) =>
+      cat.items.map((it) => ({
+        id: it.id,
+        name: it.name,
+        price: it.basePrice,
+        category: cat.id as MenuItem['category'],
+        description: it.description ?? '',
+        image: it.imageUrl ?? '',
+        calories: it.calories ?? 0,
+        badge: it.tags.includes('new')
+          ? 'NEW'
+          : it.tags.includes('bestseller')
+            ? 'POPULAR'
+            : undefined,
+      })),
+    );
+    const categories = data.categories.map((c) => ({ id: c.id, label: c.name }));
+    return { landingMenuItems: items, landingCategories: categories };
+  }, [publicMenuQuery.data]);
 
   // ==========================================
   // Centralized mock state (phased out as backend wiring lands)
@@ -196,17 +249,40 @@ export default function App() {
     setIsCartOpen(true);
   };
 
-  const handleCheckoutDispatch = (address: string, notes: string, tipAmount: number) => {
+  const handleCheckoutDispatch = async (address: string, notes: string, tipAmount: number) => {
     const itemsSubtotal = cartItems.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
     const deliveryFee = itemsSubtotal >= dinerConfig.shippingBarrier ? 0.0 : 2.5;
     const finalBill = itemsSubtotal + deliveryFee + tipAmount;
 
     setCheckoutData({ address, notes, totalCost: finalBill, itemsList: cartItems });
 
-    const newId = `${Math.floor(Math.random() * 8000) + 1000}`;
+    // Combos are client-constructed (no backend comboId) → submit only real menu items.
+    const submittableItems = cartItems.filter((it) => !it.id.startsWith('combo-'));
+    const comboItems = cartItems.filter((it) => it.id.startsWith('combo-'));
+    if (comboItems.length > 0) {
+      toast.message('Combos saved locally — backend combo flow not yet supported.');
+    }
+
+    let backendOrderId: string | null = null;
+    let backendOrderNumber: string | null = null;
+    if (submittableItems.length > 0) {
+      try {
+        const order = await placeOrder.mutateAsync({
+          guestNotes: [address && `Deliver to: ${address}`, notes].filter(Boolean).join(' · ') || undefined,
+          items: submittableItems.map((it) => ({ itemId: it.id, qty: it.quantity })),
+        });
+        backendOrderId = order.id;
+        backendOrderNumber = order.orderNumber;
+        toast.success(`Order ${order.orderNumber} placed`);
+      } catch {
+        // Hook already toasts on error; checkout modal still opens with local-only state below.
+      }
+    }
+
+    const orderId = backendOrderNumber ?? `${Math.floor(Math.random() * 8000) + 1000}`;
     const itemsDescription = cartItems.map((it) => `${it.quantity}x ${it.name}`).join(', ');
     const dispatched: Order = {
-      id: newId,
+      id: orderId,
       table: 'Takeaway Delivery',
       items: itemsDescription,
       cost: finalBill,
@@ -221,8 +297,10 @@ export default function App() {
 
     const textAlert: NotificationAlert = {
       id: `alert-${Date.now()}`,
-      title: 'Diner Checkout Ordered',
-      message: `Delivery dispatched for "${dispatched.address}". Active total cost was $${dispatched.cost.toFixed(2)}.`,
+      title: backendOrderId ? 'Order Placed' : 'Diner Checkout Ordered',
+      message: backendOrderId
+        ? `Order ${orderId} dispatched for "${address}". Total $${finalBill.toFixed(2)}.`
+        : `Delivery dispatched for "${address}". Active total cost was $${finalBill.toFixed(2)}.`,
       timestamp: dispatched.timestamp,
       isRead: false,
       type: 'order',
@@ -265,16 +343,50 @@ export default function App() {
             element={
               <div className="animate-[fadeIn_0.5s_ease-out]">
                 <StorytellingHome
-                  cartItems={cartItems}
-                  onAddToCart={handleAddToCart}
-                  onRemoveFromCart={handleRemoveFromCart}
-                  onAddCustomCombo={handleAddCustomCombo}
-                  setActivePage={navigate}
-                  menuItems={menuItems}
+                  menuItems={landingMenuItems}
+                  publicReviews={publicFeedbackQuery.data?.reviews}
+                  publicRating={publicFeedbackQuery.data?.summary}
+                  restaurant={publicRestaurantQuery.data}
+                  landingContent={landingContentQuery.data}
                   cartCount={cartCount}
                   onOpenCart={() => setIsCartOpen(true)}
                 />
               </div>
+            }
+          />
+          <Route
+            path="/menu"
+            element={
+              <MenuPage
+                cartCount={cartCount}
+                onOpenCart={() => setIsCartOpen(true)}
+                onAddToCart={handleAddToCart}
+                menuItems={landingMenuItems}
+                menuCategories={landingCategories}
+                menuLoading={publicMenuQuery.isLoading}
+                restaurant={publicRestaurantQuery.data}
+              />
+            }
+          />
+          <Route
+            path="/reserve"
+            element={
+              <ReservePage
+                cartCount={cartCount}
+                onOpenCart={() => setIsCartOpen(true)}
+                restaurant={publicRestaurantQuery.data}
+              />
+            }
+          />
+          <Route
+            path="/combos"
+            element={
+              <CombosPage
+                cartCount={cartCount}
+                onOpenCart={() => setIsCartOpen(true)}
+                onAddCustomCombo={handleAddCustomCombo}
+                restaurant={publicRestaurantQuery.data}
+              />
             }
           />
           <Route path="/login" element={<LoginPage />} />

@@ -13,6 +13,15 @@ export function useRestaurant() {
   });
 }
 
+/** Public-facing restaurant info (brand, hours, contact) for the landing page. */
+export function usePublicRestaurant() {
+  return useQuery({
+    queryKey: [...QUERY_KEY, 'public'],
+    queryFn: () => api.get<RestaurantDto>('/restaurant/public', { noAuth: true }),
+    staleTime: 10 * 60_000,
+  });
+}
+
 export function useUpdateRestaurant() {
   const queryClient = useQueryClient();
   return useMutation({

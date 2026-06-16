@@ -99,3 +99,33 @@ export function useReplyFeedback() {
     onError: (err) => handleError(err, 'Reply failed'),
   });
 }
+
+// ── Public feedback (landing page testimonials) ─────────────────────────────
+export interface PublicReviewDto {
+  id: string;
+  customerName?: string;
+  customerCity?: string;
+  rating: number;
+  text: string;
+  createdAt: string;
+}
+
+export interface PublicFeedbackResponse {
+  reviews: PublicReviewDto[];
+  summary: {
+    avgRating: number;
+    total: number;
+  };
+}
+
+export function usePublicFeedback(opts: { limit?: number; minRating?: number } = {}) {
+  return useQuery({
+    queryKey: ['feedback', 'public', opts],
+    queryFn: () =>
+      api.get<PublicFeedbackResponse>('/feedback/public', {
+        noAuth: true,
+        query: { limit: opts.limit ?? 12, minRating: opts.minRating ?? 4 },
+      }),
+    staleTime: 5 * 60_000,
+  });
+}

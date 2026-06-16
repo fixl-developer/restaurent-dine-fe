@@ -163,7 +163,7 @@ function Sidebar({ active, onNavigate, collapsed, onToggle, onSignOut }: {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2">
+      <nav className="flex-1 overflow-y-auto py-3 px-2 no-scrollbar">
         {visibleGroups.map(group => (
           <div key={group.title} className="mb-5">
             {!collapsed && (

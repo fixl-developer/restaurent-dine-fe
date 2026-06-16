@@ -46,6 +46,7 @@ import {
   type StockMovementType,
 } from '@/lib/dto/inventory';
 import type { ItemDto } from '@/lib/dto/menu';
+import { confirmToast } from '@/lib/confirmToast';
 
 function KpiCard({
   label,
@@ -298,7 +299,12 @@ export default function AdminInventory() {
   }
 
   async function handleDelete(item: InventoryItemDto) {
-    if (!confirm(`Delete "${item.name}"? This cannot be undone.`)) return;
+    const ok = await confirmToast({
+      title: `Delete "${item.name}"?`,
+      description: 'This action cannot be undone.',
+      destructive: true,
+    });
+    if (!ok) return;
     await deleteItem.mutateAsync(item._id);
   }
 
@@ -1090,7 +1096,7 @@ function RecipeRow({
           </button>
           <button
             onClick={async () => {
-              if (confirm('Delete this recipe?')) {
+              if (await confirmToast({ title: 'Delete this recipe?', destructive: true })) {
                 await deleteRecipe.mutateAsync(recipe._id);
               }
             }}

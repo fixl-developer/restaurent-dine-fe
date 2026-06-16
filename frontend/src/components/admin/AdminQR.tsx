@@ -10,6 +10,7 @@ import {
 import { useTables } from '@/hooks/useTables';
 import type { QrCodeDto, QrType } from '@/lib/dto/tables';
 import { env } from '@/config/env';
+import { confirmToast } from '@/lib/confirmToast';
 
 function KpiCard({ label, value, sub, icon: Icon, color }: {
   label: string; value: string; sub?: string; icon: React.ElementType; color: string;
@@ -172,12 +173,22 @@ export default function AdminQR() {
   }, [preview?._id]);
 
   function handleToggleActive(qr: QrCodeDto) { updateMutation.mutate({ id: qr._id, patch: { isActive: !qr.isActive } }); }
-  function handleRegenerate(qr: QrCodeDto) {
-    if (!confirm(`Regenerate slug for "${qr.label}"? Old printed QRs will stop working.`)) return;
+  async function handleRegenerate(qr: QrCodeDto) {
+    const ok = await confirmToast({
+      title: `Regenerate slug for "${qr.label}"?`,
+      description: 'Any printed copies of the old QR will stop working.',
+      confirmLabel: 'Regenerate',
+      destructive: true,
+    });
+    if (!ok) return;
     regenerateMutation.mutate(qr._id);
   }
-  function handleDelete(qr: QrCodeDto) {
-    if (!confirm(`Delete QR code "${qr.label}"?`)) return;
+  async function handleDelete(qr: QrCodeDto) {
+    const ok = await confirmToast({
+      title: `Delete QR code "${qr.label}"?`,
+      destructive: true,
+    });
+    if (!ok) return;
     deleteMutation.mutate(qr._id);
   }
   function handleCreate() {
@@ -188,9 +199,13 @@ export default function AdminQR() {
       { onSuccess: () => { setCreateInput({ type: 'table', tableId: '', label: '' }); setCreateOpen(false); } },
     );
   }
-  function handleBulkAll() {
+  async function handleBulkAll() {
     if (tablesWithoutQr.length === 0) return;
-    if (!confirm(`Generate QR codes for ${tablesWithoutQr.length} table(s)?`)) return;
+    const ok = await confirmToast({
+      title: `Generate QR codes for ${tablesWithoutQr.length} table(s)?`,
+      confirmLabel: 'Generate',
+    });
+    if (!ok) return;
     bulkCreateMutation.mutate({ tableIds: tablesWithoutQr.map((t) => t._id) });
   }
 

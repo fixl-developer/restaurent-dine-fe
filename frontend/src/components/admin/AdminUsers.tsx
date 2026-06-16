@@ -37,6 +37,7 @@ import {
   type UpdateUserInput,
   type UserDto,
 } from '@/lib/dto/rbac';
+import { confirmToast } from '@/lib/confirmToast';
 
 type Tab = 'users' | 'roles' | 'matrix';
 
@@ -279,7 +280,7 @@ function UsersTab() {
                                 toast.error("You can't delete yourself");
                                 return;
                               }
-                              if (confirm(`Delete user "${u.name}"?`)) {
+                              if (await confirmToast({ title: `Delete user "${u.name}"?`, destructive: true })) {
                                 await deleteUser.mutateAsync(u.id);
                               }
                             }}
@@ -529,7 +530,7 @@ function RolesTab() {
                           toast.error(`Cannot delete: ${memberCount} member(s) still use this role`);
                           return;
                         }
-                        if (confirm(`Delete role "${r.name}"?`)) {
+                        if (await confirmToast({ title: `Delete role "${r.name}"?`, destructive: true })) {
                           await deleteRole.mutateAsync(r._id);
                         }
                       }}

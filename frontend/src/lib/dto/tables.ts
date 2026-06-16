@@ -1,6 +1,12 @@
 /** Tables, sessions, and QR codes — DTOs mirroring backend. */
 
 export type TableStatus = 'vacant' | 'seated' | 'ordered' | 'awaiting_bill' | 'cleaning';
+export type TableShape = 'round' | 'square' | 'rect';
+
+export interface TablePosition {
+  x: number;
+  y: number;
+}
 
 export const TABLE_STATUSES: TableStatus[] = [
   'vacant', 'seated', 'ordered', 'awaiting_bill', 'cleaning',
@@ -20,6 +26,8 @@ export interface TableDto {
   zone?: string;
   capacity: number;
   status: TableStatus;
+  shape: TableShape;
+  position?: TablePosition;
   currentSessionId?: string;
   mergedWithTableIds: string[];
   mergedIntoTableId?: string;
@@ -47,6 +55,8 @@ export interface CreateTableInput {
   number: string;
   zone?: string;
   capacity?: number;
+  shape?: TableShape;
+  position?: TablePosition;
   sortOrder?: number;
 }
 

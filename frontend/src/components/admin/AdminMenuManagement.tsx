@@ -13,6 +13,7 @@ import { useSocket } from '@/hooks/useSocket';
 import {
   CategoryDto, ItemDto, categoryEmoji, FoodType, FOOD_TYPE_LABELS, CreateItemInput,
 } from '@/lib/dto/menu';
+import { confirmToast } from '@/lib/confirmToast';
 
 interface ItemFormState {
   name: string;
@@ -182,8 +183,14 @@ export default function AdminMenuManagement() {
     }
   }
 
-  function handleDeleteItem(id: string) {
-    if (!confirm('Remove this item from the menu?')) return;
+  async function handleDeleteItem(id: string) {
+    const ok = await confirmToast({
+      title: 'Remove this item from the menu?',
+      description: 'It will no longer be available to order.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteItem.mutate(id);
   }
 
@@ -212,8 +219,13 @@ export default function AdminMenuManagement() {
   function handleToggleCat(c: CategoryDto) {
     updateCategory.mutate({ id: c._id, patch: { isActive: !c.isActive } });
   }
-  function handleDeleteCategory(c: CategoryDto) {
-    if (!confirm(`Delete category "${c.name}"? (only if empty)`)) return;
+  async function handleDeleteCategory(c: CategoryDto) {
+    const ok = await confirmToast({
+      title: `Delete category "${c.name}"?`,
+      description: 'Only empty categories can be deleted.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteCategory.mutate(c._id);
   }
 
