@@ -37,7 +37,7 @@ export default function LandingHeader({ brandName, cartCount, onOpenCart }: Land
       className="flex items-center justify-between"
       style={{
         background: WHITE,
-        padding: '18px 48px',
+        padding: 'clamp(12px, 18px, 24px) clamp(20px, 48px, 56px)',
         position: 'sticky',
         top: 0,
         zIndex: 100,
@@ -48,18 +48,18 @@ export default function LandingHeader({ brandName, cartCount, onOpenCart }: Land
       <Link
         to="/"
         className="font-lora italic bg-transparent border-none cursor-pointer"
-        style={{ fontSize: 20, color: PINK, letterSpacing: '-0.2px', textDecoration: 'none' }}
+        style={{ fontSize: 'clamp(18px, 20px, 24px)', color: PINK, letterSpacing: '-0.2px', textDecoration: 'none' }}
       >
         {brandName}
       </Link>
 
-      <ul className="hidden md:flex list-none items-center" style={{ gap: 36 }}>
+      <ul className="hidden md:flex list-none items-center" style={{ gap: 'clamp(20px, 36px, 48px)' }}>
         {NAV_LINKS.map(({ label, to }) => (
           <li key={to}>
             <NavLink
               to={to}
               style={({ isActive }) => ({
-                fontSize: 11,
+                fontSize: 'clamp(10px, 11px, 13px)',
                 fontWeight: 600,
                 letterSpacing: '1.8px',
                 textTransform: 'uppercase',
@@ -74,13 +74,13 @@ export default function LandingHeader({ brandName, cartCount, onOpenCart }: Land
         ))}
       </ul>
 
-      <div className="flex items-center" style={{ gap: 16 }}>
+      <div className="flex items-center" style={{ gap: 'clamp(12px, 16px, 20px)' }}>
         <div className="relative hidden sm:block">
           <button
             onClick={() => setOpsOpen((v) => !v)}
             className="flex items-center gap-1 bg-transparent border-none cursor-pointer"
             style={{
-              fontSize: 11,
+              fontSize: 'clamp(10px, 11px, 13px)',
               fontWeight: 600,
               letterSpacing: '1.8px',
               textTransform: 'uppercase',
@@ -117,8 +117,8 @@ export default function LandingHeader({ brandName, cartCount, onOpenCart }: Land
                   className="w-full text-left bg-transparent border-none cursor-pointer transition-opacity hover:opacity-75"
                   style={{
                     display: 'block',
-                    padding: '10px 16px',
-                    fontSize: 11,
+                    padding: 'clamp(8px, 10px, 12px) clamp(12px, 16px, 20px)',
+                    fontSize: 'clamp(10px, 11px, 13px)',
                     fontWeight: 600,
                     letterSpacing: '1px',
                     textTransform: 'uppercase',
@@ -136,7 +136,7 @@ export default function LandingHeader({ brandName, cartCount, onOpenCart }: Land
           onClick={onOpenCart}
           className="flex items-center gap-2 bg-transparent border-none cursor-pointer"
           style={{
-            fontSize: 11,
+            fontSize: 'clamp(10px, 11px, 13px)',
             fontWeight: 600,
             letterSpacing: '1.8px',
             textTransform: 'uppercase',
@@ -149,7 +149,7 @@ export default function LandingHeader({ brandName, cartCount, onOpenCart }: Land
             style={{
               background: PINK,
               color: WHITE,
-              fontSize: 10,
+              fontSize: 'clamp(9px, 10px, 12px)',
               minWidth: 20,
               height: 20,
               borderRadius: 100,

@@ -37,31 +37,40 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
     : null;
 
   return (
-    <section style={{ background: BG, padding: '72px 48px' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <p className="font-script" style={{ fontSize: 16, color: PINK, marginBottom: 4 }}>
+    <section style={{
+      background: BG,
+      width: '100%'
+    }}>
+      <div style={{
+        width: '100%',
+        padding: 'clamp(32px, 72px, 88px) clamp(12px, 5vw, 56px)',
+        maxWidth: '1400px',
+        margin: '0 auto',
+        boxSizing: 'border-box'
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: 'clamp(24px, 40px, 56px)' }}>
+          <p className="font-script" style={{ fontSize: 'clamp(13px, 16px, 18px)', color: PINK, marginBottom: 4 }}>
             come say hello ♡
           </p>
           <h2
             className="font-barlow font-black uppercase"
-            style={{ fontSize: 46, letterSpacing: '-0.5px', lineHeight: 1, color: HEAD }}
+            style={{ fontSize: 'clamp(32px, 46px, 52px)', letterSpacing: '-0.5px', lineHeight: 1, color: HEAD }}
           >
             VISIT US
           </h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
           {/* Address + contact */}
           <div
             style={{
               background: WHITE,
               borderRadius: 22,
-              padding: '32px 32px 28px',
+              padding: 'clamp(20px, 32px, 40px) clamp(20px, 32px, 40px) clamp(18px, 28px, 36px)',
               border: '1.5px solid rgba(124,77,204,.08)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 22,
+              gap: 'clamp(14px, 22px, 28px)',
             }}
           >
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
@@ -82,7 +91,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
               <div style={{ flex: 1 }}>
                 <div
                   style={{
-                    fontSize: 9,
+                    fontSize: 'clamp(8px, 9px, 11px)',
                     fontWeight: 700,
                     letterSpacing: '2px',
                     textTransform: 'uppercase',
@@ -92,10 +101,10 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                 >
                   Address
                 </div>
-                <div style={{ fontSize: 14, color: HEAD, fontWeight: 600, marginBottom: 4 }}>
+                <div style={{ fontSize: 'clamp(13px, 14px, 16px)', color: HEAD, fontWeight: 600, marginBottom: 4 }}>
                   {brandAddress || 'Address not set'}
                 </div>
-                <div style={{ fontSize: 12, color: TX }}>
+                <div style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TX }}>
                   {[brandCity, brandState].filter(Boolean).join(', ') || '—'}
                 </div>
                 {mapsUrl && (
@@ -106,7 +115,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                     style={{
                       display: 'inline-block',
                       marginTop: 12,
-                      fontSize: 11,
+                      fontSize: 'clamp(10px, 11px, 13px)',
                       fontWeight: 700,
                       letterSpacing: '1.5px',
                       textTransform: 'uppercase',
@@ -140,7 +149,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                 <div>
                   <div
                     style={{
-                      fontSize: 9,
+                      fontSize: 'clamp(8px, 9px, 11px)',
                       fontWeight: 700,
                       letterSpacing: '2px',
                       textTransform: 'uppercase',
@@ -152,7 +161,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                   </div>
                   <a
                     href={`tel:${brandPhone}`}
-                    style={{ fontSize: 14, fontWeight: 600, color: HEAD, textDecoration: 'none' }}
+                    style={{ fontSize: 'clamp(13px, 14px, 16px)', fontWeight: 600, color: HEAD, textDecoration: 'none' }}
                   >
                     {brandPhone}
                   </a>
@@ -178,7 +187,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                 <div>
                   <div
                     style={{
-                      fontSize: 9,
+                      fontSize: 'clamp(8px, 9px, 11px)',
                       fontWeight: 700,
                       letterSpacing: '2px',
                       textTransform: 'uppercase',
@@ -190,7 +199,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                   </div>
                   <a
                     href={`mailto:${brandEmail}`}
-                    style={{ fontSize: 14, fontWeight: 600, color: HEAD, textDecoration: 'none' }}
+                    style={{ fontSize: 'clamp(13px, 14px, 16px)', fontWeight: 600, color: HEAD, textDecoration: 'none' }}
                   >
                     {brandEmail}
                   </a>
@@ -204,11 +213,11 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
             style={{
               background: WHITE,
               borderRadius: 22,
-              padding: '32px 32px 28px',
+              padding: 'clamp(20px, 32px, 40px) clamp(20px, 32px, 40px) clamp(18px, 28px, 36px)',
               border: '1.5px solid rgba(124,77,204,.08)',
             }}
           >
-            <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 22 }}>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 'clamp(14px, 22px, 28px)' }}>
               <div
                 style={{
                   width: 42,
@@ -225,7 +234,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
               <div>
                 <div
                   style={{
-                    fontSize: 9,
+                    fontSize: 'clamp(8px, 9px, 11px)',
                     fontWeight: 700,
                     letterSpacing: '2px',
                     textTransform: 'uppercase',
@@ -234,7 +243,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                 >
                   Opening Hours
                 </div>
-                <div className="font-barlow font-black" style={{ fontSize: 18, color: HEAD }}>
+                <div className="font-barlow font-black" style={{ fontSize: 'clamp(16px, 18px, 20px)', color: HEAD }}>
                   This week
                 </div>
               </div>
@@ -254,7 +263,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                 >
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: 'clamp(10px, 11px, 13px)',
                       fontWeight: 700,
                       letterSpacing: '2px',
                       textTransform: 'uppercase',
@@ -265,7 +274,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                   </span>
                   <span
                     style={{
-                      fontSize: 13,
+                      fontSize: 'clamp(12px, 13px, 15px)',
                       fontWeight: 600,
                       color: row.hours === 'Closed' ? TL : HEAD,
                       fontStyle: row.hours === 'Closed' ? 'italic' : 'normal',
@@ -276,7 +285,7 @@ export default function VisitUs({ restaurant }: VisitUsProps) {
                 </div>
               ))}
               {hours.length === 0 && (
-                <p style={{ fontSize: 11, color: TL, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>
+                <p style={{ fontSize: 'clamp(10px, 11px, 13px)', color: TL, fontStyle: 'italic', textAlign: 'center', padding: 'clamp(8px, 12px, 16px) 0' }}>
                   Opening hours not configured yet.
                 </p>
               )}

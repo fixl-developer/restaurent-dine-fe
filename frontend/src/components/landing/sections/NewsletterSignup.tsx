@@ -31,14 +31,22 @@ export default function NewsletterSignup() {
   };
 
   return (
-    <section style={{ background: BG, padding: '72px 48px' }}>
+    <section style={{
+      background: BG,
+      width: '100%',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 'clamp(32px, 72px, 88px) clamp(12px, 5vw, 56px)'
+    }}>
       <div
         style={{
-          maxWidth: 760,
-          margin: '0 auto',
+          maxWidth: '760px',
+          width: '100%',
+          boxSizing: 'border-box',
           background: WHITE,
           borderRadius: 28,
-          padding: '44px 40px',
+          padding: 'clamp(28px, 44px, 56px) clamp(28px, 40px, 48px)',
           border: '1.5px solid rgba(124,77,204,.1)',
           textAlign: 'center',
           position: 'relative',
@@ -84,13 +92,13 @@ export default function NewsletterSignup() {
             <Mail style={{ width: 26, height: 26, color: PURP }} />
           </div>
 
-          <p className="font-script" style={{ fontSize: 16, color: TEAL, marginBottom: 2 }}>
+          <p className="font-script" style={{ fontSize: 'clamp(13px, 16px, 18px)', color: TEAL, marginBottom: 2 }}>
             stay in the loop ♡
           </p>
           <h2
             className="font-barlow font-black uppercase"
             style={{
-              fontSize: 36,
+              fontSize: 'clamp(24px, 36px, 44px)',
               letterSpacing: '-0.5px',
               lineHeight: 1.05,
               color: HEAD,
@@ -101,7 +109,7 @@ export default function NewsletterSignup() {
             <br />
             STRAIGHT TO YOUR INBOX
           </h2>
-          <p style={{ fontSize: 12, color: TL, maxWidth: 440, margin: '0 auto 24px', lineHeight: 1.7 }}>
+          <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, maxWidth: 440, margin: '0 auto 24px', lineHeight: 1.7 }}>
             New dishes, secret events, and the occasional first-look discount. No spam — we cook
             instead.
           </p>
@@ -112,11 +120,11 @@ export default function NewsletterSignup() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '14px 26px',
+                padding: 'clamp(10px, 14px, 18px) clamp(18px, 26px, 32px)',
                 background: `${TEAL}1A`,
                 border: `1.5px solid ${TEAL}`,
                 borderRadius: 100,
-                fontSize: 12,
+                fontSize: 'clamp(11px, 12px, 14px)',
                 fontWeight: 700,
                 color: TEAL,
                 letterSpacing: '1px',
@@ -131,7 +139,7 @@ export default function NewsletterSignup() {
               style={{
                 display: 'flex',
                 gap: 8,
-                maxWidth: 460,
+                maxWidth: 'clamp(300px, 460px, 100%)',
                 margin: '0 auto',
                 flexWrap: 'wrap',
               }}
@@ -144,12 +152,12 @@ export default function NewsletterSignup() {
                 required
                 style={{
                   flex: 1,
-                  minWidth: 200,
+                  minWidth: 'clamp(150px, 200px, 100%)',
                   background: WHITE,
                   border: '1.5px solid rgba(44,44,44,.18)',
                   borderRadius: 100,
-                  padding: '12px 20px',
-                  fontSize: 13,
+                  padding: 'clamp(10px, 12px, 16px) clamp(16px, 20px, 24px)',
+                  fontSize: 'clamp(12px, 13px, 15px)',
                   fontFamily: 'inherit',
                   outline: 'none',
                   color: TX,

@@ -143,3 +143,147 @@
   transform: rotateY(180deg);
 }
 
+/* ── GLOBAL RESPONSIVE CONTAINER SYSTEM ──────────────────────────────────── */
+
+/* Mobile: 320px - 480px */
+@media (max-width: 480px) {
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .hero-grid > div {
+    padding: 16px 12px !important;
+  }
+  .about-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Tablet: 481px - 768px */
+@media (min-width: 481px) and (max-width: 768px) {
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .about-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Small Desktop: 769px - 1024px */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .hero-grid {
+    grid-template-columns: 40% 60% !important;
+  }
+  .about-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+/* Large Desktop: 1025px - 1400px */
+@media (min-width: 1025px) and (max-width: 1400px) {
+  .hero-grid {
+    grid-template-columns: 38% 62% !important;
+  }
+  .about-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+/* Ultra Large: 1401px+ */
+@media (min-width: 1401px) {
+  .hero-grid {
+    grid-template-columns: 38% 62% !important;
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .about-grid {
+    grid-template-columns: 1fr 1fr !important;
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .responsive-container,
+  .section-container {
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+  }
+}
+
+/* ── MOBILE FIRST APPROACH - Stack all content vertically on small screens ── */
+@media (max-width: 768px) {
+  .content-max-width {
+    width: 100%;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+
+  .hero-grid > div:last-child {
+    display: none !important;
+  }
+
+  /* Adjust card heights for mobile */
+  .card-item {
+    min-height: auto;
+  }
+}
+
+/* ── TABLET: Show both columns in hero ── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .hero-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px !important;
+  }
+}
+
+/* ── DESKTOP: Proper 38/62 split ── */
+@media (min-width: 1025px) {
+  .hero-grid {
+    grid-template-columns: minmax(300px, 38%) minmax(300px, 62%) !important;
+    gap: 20px !important;
+    max-width: 1400px !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    padding: 20px 48px !important;
+  }
+  .about-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0 !important;
+  }
+}
+
+/* ── ULTRA LARGE: Constrain and center ── */
+@media (min-width: 1401px) {
+  .hero-grid {
+    width: 100% !important;
+    max-width: 1400px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  .about-grid {
+    width: 100% !important;
+    max-width: 1400px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+/* ── BIG SCREEN CONTAINER CONSTRAINTS ─────────────────────────────────────── */
+@media (min-width: 1401px) {
+  /* Wrap content in container to prevent stretching */
+  main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  main > * {
+    width: 100%;
+  }
+}
+

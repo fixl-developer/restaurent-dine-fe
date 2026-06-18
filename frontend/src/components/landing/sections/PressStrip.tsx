@@ -21,15 +21,22 @@ export default function PressStrip() {
     <section
       style={{
         background: WHITE,
-        padding: '52px 48px',
         borderTop: '1px solid rgba(124,77,204,.08)',
         borderBottom: '1px solid rgba(124,77,204,.08)',
+        width: '100%'
       }}
     >
-      <div style={{ maxWidth: 1100, margin: '0 auto', textAlign: 'center' }}>
+      <div style={{
+        textAlign: 'center',
+        width: '100%',
+        padding: 'clamp(32px, 52px, 64px) clamp(12px, 5vw, 56px)',
+        maxWidth: '1400px',
+        margin: '0 auto',
+        boxSizing: 'border-box'
+      }}>
         <p
           style={{
-            fontSize: 10,
+            fontSize: 'clamp(9px, 10px, 12px)',
             fontWeight: 700,
             letterSpacing: '3px',
             textTransform: 'uppercase',
@@ -42,10 +49,10 @@ export default function PressStrip() {
         <h3
           className="font-barlow font-black uppercase"
           style={{
-            fontSize: 26,
+            fontSize: 'clamp(20px, 26px, 32px)',
             letterSpacing: '-0.3px',
             color: HEAD,
-            marginBottom: 28,
+            marginBottom: 'clamp(16px, 28px, 36px)',
           }}
         >
           People are talking.
@@ -56,7 +63,7 @@ export default function PressStrip() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 28,
+            gap: 'clamp(16px, 28px, 40px)',
             flexWrap: 'wrap',
             opacity: 0.7,
           }}
@@ -66,7 +73,7 @@ export default function PressStrip() {
               key={p.name}
               style={{
                 fontFamily: p.font === 'Lora' ? '"Lora", serif' : '"Barlow", sans-serif',
-                fontSize: 22,
+                fontSize: 'clamp(16px, 22px, 28px)',
                 fontWeight: 900,
                 letterSpacing: p.font === 'Barlow' ? '2px' : '0',
                 textTransform: p.font === 'Barlow' ? 'uppercase' : 'none',

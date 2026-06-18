@@ -36,17 +36,20 @@ export default function StatsStrip({ publicRating, menuItemCount }: StatsStripPr
     <section
       style={{
         background: BG,
-        padding: '36px 48px',
         borderBottom: '1px solid rgba(124,77,204,.08)',
+        width: '100%'
       }}
     >
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 24,
-          maxWidth: 1100,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 'clamp(16px, 24px, 32px)',
+          width: '100%',
+          padding: 'clamp(24px, 36px, 48px) clamp(12px, 5vw, 56px)',
+          maxWidth: '1400px',
           margin: '0 auto',
+          boxSizing: 'border-box'
         }}
       >
         {stats.map((s, i) => (
@@ -54,14 +57,14 @@ export default function StatsStrip({ publicRating, menuItemCount }: StatsStripPr
             key={i}
             style={{
               textAlign: 'center',
-              padding: '8px 4px',
+              padding: 'clamp(6px, 8px, 12px) clamp(2px, 4px, 8px)',
               borderRight: i < stats.length - 1 ? '1px solid rgba(124,77,204,.12)' : 'none',
             }}
           >
             <div
               className="font-barlow font-black"
               style={{
-                fontSize: 44,
+                fontSize: 'clamp(32px, 44px, 56px)',
                 lineHeight: 1,
                 letterSpacing: '-1px',
                 color: s.color,
@@ -72,7 +75,7 @@ export default function StatsStrip({ publicRating, menuItemCount }: StatsStripPr
             </div>
             <div
               style={{
-                fontSize: 10,
+                fontSize: 'clamp(9px, 10px, 12px)',
                 fontWeight: 700,
                 letterSpacing: '2px',
                 textTransform: 'uppercase',
@@ -82,7 +85,7 @@ export default function StatsStrip({ publicRating, menuItemCount }: StatsStripPr
             >
               {s.label}
             </div>
-            <div style={{ fontSize: 10, color: TL }}>—</div>
+            <div style={{ fontSize: 'clamp(9px, 10px, 12px)', color: TL }}>—</div>
           </div>
         ))}
       </div>

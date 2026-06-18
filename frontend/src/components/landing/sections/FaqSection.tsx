@@ -40,25 +40,31 @@ export default function FaqSection() {
   const [openIdx, setOpenIdx] = useState<number | null>(0);
 
   return (
-    <section style={{ background: BG, padding: '72px 48px' }}>
+    <section style={{
+      background: BG,
+      width: '100%'
+    }}>
       <div
         style={{
-          maxWidth: 880,
-          margin: '0 auto',
           display: 'grid',
-          gridTemplateColumns: '1fr 1.6fr',
-          gap: 56,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 'clamp(32px, 56px, 72px)',
           alignItems: 'flex-start',
+          width: '100%',
+          padding: 'clamp(32px, 72px, 88px) clamp(12px, 5vw, 56px)',
+          maxWidth: '1400px',
+          margin: '0 auto',
+          boxSizing: 'border-box'
         }}
       >
         <div style={{ position: 'sticky', top: 96 }}>
-          <p className="font-script" style={{ fontSize: 16, color: TEAL, marginBottom: 4 }}>
+          <p className="font-script" style={{ fontSize: 'clamp(13px, 16px, 18px)', color: TEAL, marginBottom: 4 }}>
             curious? ♡
           </p>
           <h2
             className="font-barlow font-black uppercase"
             style={{
-              fontSize: 44,
+              fontSize: 'clamp(32px, 44px, 52px)',
               letterSpacing: '-0.5px',
               lineHeight: 1,
               color: HEAD,
@@ -69,7 +75,7 @@ export default function FaqSection() {
             <br />
             ASKED
           </h2>
-          <p style={{ fontSize: 12, color: TL, lineHeight: 1.7 }}>
+          <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, lineHeight: 1.7 }}>
             Everything you wanted to know about visiting, ordering, and dining with us — in one place.
           </p>
         </div>
@@ -96,14 +102,14 @@ export default function FaqSection() {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: 16,
-                    padding: '18px 22px',
+                    padding: 'clamp(14px, 18px, 24px) clamp(16px, 22px, 28px)',
                     fontFamily: 'inherit',
                   }}
                 >
                   <span
                     className="font-barlow"
                     style={{
-                      fontSize: 14,
+                      fontSize: 'clamp(13px, 14px, 16px)',
                       fontWeight: 700,
                       color: HEAD,
                       letterSpacing: '-0.1px',
@@ -131,8 +137,8 @@ export default function FaqSection() {
                 {isOpen && (
                   <div
                     style={{
-                      padding: '0 22px 20px',
-                      fontSize: 12,
+                      padding: '0 clamp(16px, 22px, 28px) clamp(14px, 20px, 24px)',
+                      fontSize: 'clamp(11px, 12px, 14px)',
                       color: TX,
                       lineHeight: 1.75,
                     }}

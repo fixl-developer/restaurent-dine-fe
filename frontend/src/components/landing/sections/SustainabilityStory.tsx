@@ -31,27 +31,36 @@ const PILLARS = [
 
 export default function SustainabilityStory() {
   return (
-    <section style={{ background: BG, padding: '72px 48px' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <p className="font-script" style={{ fontSize: 16, color: PINK, marginBottom: 4 }}>
+    <section style={{
+      background: BG,
+      width: '100%'
+    }}>
+      <div style={{
+        width: '100%',
+        padding: 'clamp(32px, 72px, 88px) clamp(12px, 5vw, 56px)',
+        maxWidth: '1400px',
+        margin: '0 auto',
+        boxSizing: 'border-box'
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: 'clamp(28px, 48px, 64px)' }}>
+          <p className="font-script" style={{ fontSize: 'clamp(13px, 16px, 18px)', color: PINK, marginBottom: 4 }}>
             from farm to your table ♡
           </p>
           <h2
             className="font-barlow font-black uppercase"
-            style={{ fontSize: 48, letterSpacing: '-0.5px', lineHeight: 1, color: HEAD, marginBottom: 12 }}
+            style={{ fontSize: 'clamp(32px, 48px, 56px)', letterSpacing: '-0.5px', lineHeight: 1, color: HEAD, marginBottom: 12 }}
           >
             ROOTED IN OUR
             <br />
             COMMUNITY
           </h2>
-          <p style={{ fontSize: 13, color: TL, maxWidth: 540, margin: '0 auto', lineHeight: 1.7 }}>
+          <p style={{ fontSize: 'clamp(12px, 13px, 15px)', color: TL, maxWidth: 540, margin: '0 auto', lineHeight: 1.7 }}>
             Good food starts with good sourcing. We partner with neighbourhood farms, compost what we
             can't serve, and keep our kitchen kinder to the planet — without ever compromising on flavour.
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
           {PILLARS.map((p) => {
             const Icon = p.icon;
             return (
@@ -60,7 +69,7 @@ export default function SustainabilityStory() {
                 style={{
                   background: WHITE,
                   borderRadius: 22,
-                  padding: '32px 28px',
+                  padding: 'clamp(20px, 32px, 40px) clamp(18px, 28px, 36px)',
                   border: '1.5px solid rgba(124,77,204,.08)',
                   textAlign: 'left',
                 }}
@@ -82,7 +91,7 @@ export default function SustainabilityStory() {
                 <h3
                   className="font-barlow font-black uppercase"
                   style={{
-                    fontSize: 18,
+                    fontSize: 'clamp(16px, 18px, 20px)',
                     letterSpacing: '-0.2px',
                     color: HEAD,
                     marginBottom: 10,
@@ -90,7 +99,7 @@ export default function SustainabilityStory() {
                 >
                   {p.title}
                 </h3>
-                <p style={{ fontSize: 12, color: TL, lineHeight: 1.7, margin: 0 }}>{p.body}</p>
+                <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, lineHeight: 1.7, margin: 0 }}>{p.body}</p>
               </div>
             );
           })}

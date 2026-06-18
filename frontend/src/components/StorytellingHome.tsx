@@ -185,25 +185,37 @@ export default function StorytellingHome({
   const galleryHashtag = landingContent?.galleryHashtag;
 
   return (
-    <div className="w-full font-sans">
+    <div className="w-full font-sans" style={{ width: '100%', overflow: 'hidden' }}>
       <LandingHeader brandName={brandName} cartCount={cartCount} onOpenCart={onOpenCart} />
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section
-        className="grid"
-        style={{ background: BG_HERO, gridTemplateColumns: '38% 62%', minHeight: 480 }}
+        className="hero-grid grid w-full"
+        style={{
+          background: BG_HERO,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          minHeight: 'clamp(350px, 480px, 600px)',
+          width: '100%',
+          maxWidth: '1400px',
+          margin: '0 auto',
+          padding: 'clamp(20px, 5vw, 48px)',
+          boxSizing: 'border-box',
+          display: 'grid',
+          justifyItems: 'stretch',
+          alignItems: 'stretch'
+        }}
       >
-        <div className="flex flex-col justify-between relative z-10" style={{ padding: '40px 32px 44px 48px' }}>
-          <div className="absolute" style={{ top: 22, right: 18 }}>
+        <div className="flex flex-col justify-between relative z-10" style={{ padding: 'clamp(24px, 5vw, 56px) clamp(16px, 4vw, 48px)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="absolute" style={{ top: 'clamp(12px, 3vw, 22px)', right: 'clamp(12px, 3vw, 18px)' }}>
             <Starburst />
           </div>
-          <div style={{ marginTop: 36 }}>
-            <p className="font-script" style={{ fontSize: 16, color: TEAL, marginBottom: 8 }}>
+          <div style={{ marginTop: 'clamp(16px, 36px, 48px)' }}>
+            <p className="font-script" style={{ fontSize: 'clamp(13px, 16px, 18px)', color: TEAL, marginBottom: 8 }}>
               freshly crafted, every day ♡
             </p>
             <h1
               className="font-barlow font-black uppercase"
-              style={{ fontSize: 78, lineHeight: 0.9, letterSpacing: '-1px', color: HEAD }}
+              style={{ fontSize: 'clamp(48px, 8vw, 78px)', lineHeight: 0.9, letterSpacing: '-1px', color: HEAD }}
             >
               DISCOVER
               <br />
@@ -214,34 +226,35 @@ export default function StorytellingHome({
               DINING.
             </h1>
           </div>
-          <p style={{ fontSize: 12, color: TL, lineHeight: 1.6, marginTop: 14, maxWidth: 210 }}>
+          <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, lineHeight: 1.6, marginTop: 14, maxWidth: 210 }}>
             Artisan pastries, fresh grain bowls & specialty teas — served with care in {brandCity}.
           </p>
           <button
             onClick={() => navigate('/menu')}
             className="cursor-pointer border-none transition-opacity hover:opacity-80"
             style={{
-              marginTop: 20,
+              marginTop: 'clamp(12px, 3vw, 20px)',
               background: PINK,
               color: WHITE,
-              fontSize: 10,
+              fontSize: 'clamp(9px, 1.8vw, 11px)',
               fontWeight: 700,
               letterSpacing: '2px',
               textTransform: 'uppercase',
-              padding: '13px 26px',
+              padding: 'clamp(10px, 2vw, 13px) clamp(18px, 4vw, 26px)',
               borderRadius: 100,
               width: 'fit-content',
+              whiteSpace: 'nowrap'
             }}
           >
             View Full Menu
           </button>
         </div>
-        <div className="flex items-stretch" style={{ padding: '20px 20px 20px 0' }}>
+        <div className="flex items-stretch" style={{ padding: 'clamp(12px, 3vw, 24px)', paddingRight: 'clamp(12px, 3vw, 24px)', display: 'flex', alignItems: 'stretch' }}>
           <div
             className="flex-1 overflow-hidden relative"
             style={{
-              borderRadius: 20,
-              minHeight: 440,
+              borderRadius: 'clamp(14px, 4vw, 20px)',
+              minHeight: 'clamp(300px, 440px, 540px)',
               background: `linear-gradient(135deg,${BG_HERO} 0%,#ffc2d0 100%)`,
             }}
           >
@@ -253,36 +266,38 @@ export default function StorytellingHome({
               fetchPriority="high"
               decoding="sync"
             />
-            <div className="absolute" style={{ top: 16, right: 16, zIndex: 10 }}>
+            <div className="absolute" style={{ top: 'clamp(10px, 2vw, 16px)', right: 'clamp(10px, 2vw, 16px)', zIndex: 10 }}>
               <PinkyPromiseStamp />
             </div>
             {todaysSpecial && (
               <div
                 className="absolute rounded-xl z-10"
                 style={{
-                  bottom: 18,
-                  left: 18,
-                  padding: '12px 16px',
+                  bottom: 'clamp(12px, 3vw, 18px)',
+                  left: 'clamp(12px, 3vw, 18px)',
+                  padding: 'clamp(10px, 2vw, 16px) clamp(12px, 3vw, 16px)',
                   background: 'rgba(255,255,255,.92)',
                   backdropFilter: 'blur(6px)',
+                  borderRadius: 'clamp(8px, 2vw, 12px)',
+                  maxWidth: 'clamp(140px, 60%, 200px)'
                 }}
               >
                 <div
                   style={{
-                    fontSize: 9,
+                    fontSize: 'clamp(7px, 1.5vw, 9px)',
                     fontWeight: 700,
                     letterSpacing: '1.5px',
                     textTransform: 'uppercase',
                     color: TL,
-                    marginBottom: 3,
+                    marginBottom: 'clamp(2px, 1vw, 3px)',
                   }}
                 >
                   Today's Special
                 </div>
-                <div className="font-barlow font-bold" style={{ fontSize: 16, color: HEAD }}>
+                <div className="font-barlow font-bold" style={{ fontSize: 'clamp(13px, 3vw, 16px)', color: HEAD, marginBottom: 'clamp(1px, 0.5vw, 2px)' }}>
                   {todaysSpecial.name}
                 </div>
-                <div style={{ fontSize: 11, color: TEAL, fontWeight: 600, marginTop: 2 }}>
+                <div style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: TEAL, fontWeight: 600, marginTop: 'clamp(1px, 0.5vw, 2px)' }}>
                   ${todaysSpecial.price.toFixed(2)} · Fresh Daily
                 </div>
               </div>
@@ -298,7 +313,8 @@ export default function StorytellingHome({
           background: BG_YELLOW,
           borderTop: '1px solid rgba(27,200,200,.15)',
           borderBottom: '1px solid rgba(27,200,200,.15)',
-          padding: '11px 0',
+          padding: 'clamp(8px, 2vw, 14px) 0',
+          width: '100%'
         }}
       >
         <div className="ticker-roll">
@@ -307,17 +323,17 @@ export default function StorytellingHome({
               key={i}
               className="inline-flex items-center"
               style={{
-                fontSize: 10,
+                fontSize: 'clamp(8px, 2vw, 11px)',
                 fontWeight: 700,
                 letterSpacing: '2.5px',
                 textTransform: 'uppercase',
                 color: i % 2 === 0 ? TEAL : PURP,
-                padding: '0 24px',
-                gap: 24,
+                padding: '0 clamp(12px, 3vw, 24px)',
+                gap: 'clamp(12px, 3vw, 24px)',
               }}
             >
               {item}
-              <span style={{ fontSize: 12, color: PINK }}>♡</span>
+              <span style={{ fontSize: 'clamp(10px, 2vw, 13px)', color: PINK }}>♡</span>
             </span>
           ))}
         </div>
@@ -327,14 +343,31 @@ export default function StorytellingHome({
       <StatsStrip publicRating={publicRating} menuItemCount={menuItems.length} />
 
       {/* ── About / Video ─────────────────────────────────────────────────── */}
-      <section id="about" className="grid grid-cols-2" style={{ background: BG_ABOUT, minHeight: 320 }}>
+      <section id="about" className="about-grid w-full" style={{
+        background: BG_ABOUT,
+        width: '100%',
+        maxWidth: '1400px',
+        margin: '0 auto',
+        boxSizing: 'border-box',
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '0',
+        minHeight: 'clamp(300px, 50vh, 500px)'
+      }}>
         <div
           className="flex flex-col justify-center"
-          style={{ padding: '54px 48px', borderRight: '1px solid rgba(27,200,200,.18)' }}
+          style={{
+            padding: 'clamp(28px, 5vw, 64px) clamp(16px, 4vw, 56px)',
+            borderRight: 'none',
+            minHeight: 'clamp(300px, 50vh, 450px)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center'
+          }}
         >
           <div
             style={{
-              fontSize: 9,
+              fontSize: 'clamp(8px, 9px, 11px)',
               fontWeight: 700,
               letterSpacing: '2.5px',
               textTransform: 'uppercase',
@@ -344,18 +377,18 @@ export default function StorytellingHome({
           >
             {brandCity}, {brandState} · Est. 2026
           </div>
-          <p className="font-script" style={{ fontSize: 16, color: PINK, marginBottom: 8 }}>
+          <p className="font-script" style={{ fontSize: 'clamp(13px, 16px, 18px)', color: PINK, marginBottom: 8 }}>
             more than just a meal ♡
           </p>
           <h2
             className="font-barlow font-black uppercase"
-            style={{ fontSize: 48, lineHeight: 0.9, letterSpacing: '-0.5px', marginBottom: 16, color: HEAD }}
+            style={{ fontSize: 'clamp(32px, 48px, 56px)', lineHeight: 0.9, letterSpacing: '-0.5px', marginBottom: 16, color: HEAD }}
           >
             MORE THAN
             <br />
             JUST FOOD.
           </h2>
-          <p style={{ fontSize: 12, color: TL, lineHeight: 1.7, maxWidth: 280, marginBottom: 24 }}>
+          <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, lineHeight: 1.7, maxWidth: 280, marginBottom: 24 }}>
             We're a spot where every detail matters. Locally sourced, made fresh each morning, served with genuine warmth.
           </p>
           <button
@@ -375,10 +408,10 @@ export default function StorytellingHome({
             Reserve a Table
           </button>
         </div>
-        <div style={{ overflow: 'hidden', display: 'flex', alignItems: 'stretch' }}>
+        <div style={{ overflow: 'hidden', display: 'flex', alignItems: 'stretch', minHeight: 'clamp(300px, 50vh, 450px)' }}>
           <video
             src={dogVideo}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', minHeight: 320 }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             autoPlay
             muted
             loop
@@ -392,19 +425,25 @@ export default function StorytellingHome({
 
       {/* ── How It Works ─────────────────────────────────────────────────── */}
       <section
-        style={{ background: WHITE, padding: '44px 48px', borderTop: '1px solid rgba(124,77,204,.08)' }}
+        style={{
+          background: WHITE,
+          padding: 'clamp(24px, 44px, 56px) 0',
+          borderTop: '1px solid rgba(124,77,204,.08)',
+          width: '100%'
+        }}
       >
-        <p className="font-script" style={{ fontSize: 16, color: TEAL, marginBottom: 4 }}>
-          simple & delightful ♡
-        </p>
-        <h2
-          className="font-barlow font-black uppercase"
-          style={{ fontSize: 46, letterSpacing: '-0.5px', marginBottom: 6, color: DARK }}
-        >
-          HOW IT WORKS
-        </h2>
-        <p style={{ fontSize: 12, color: TL, marginBottom: 28 }}>Hover each card to discover the step.</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+        <div style={{ width: '100%', padding: '0 clamp(20px, 5vw, 56px)', maxWidth: '1400px', margin: '0 auto', boxSizing: 'border-box' }}>
+          <p className="font-script" style={{ fontSize: 'clamp(13px, 16px, 18px)', color: TEAL, marginBottom: 4 }}>
+            simple & delightful ♡
+          </p>
+          <h2
+            className="font-barlow font-black uppercase"
+            style={{ fontSize: 'clamp(32px, 46px, 52px)', letterSpacing: '-0.5px', marginBottom: 6, color: DARK }}
+          >
+            HOW IT WORKS
+          </h2>
+          <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 28 }}>Hover each card to discover the step.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'clamp(12px, 2vw, 20px)' }}>
           {howSteps.map((step) => (
             <div key={step.num} className="how-flip-wrapper">
               <div className="how-flip-inner">
@@ -452,6 +491,7 @@ export default function StorytellingHome({
               </div>
             </div>
           ))}
+          </div>
         </div>
       </section>
 
@@ -459,8 +499,15 @@ export default function StorytellingHome({
       <SustainabilityStory />
 
       {/* ── Reviews ───────────────────────────────────────────────────────── */}
-      <section style={{ background: '#E8F5E9', padding: '52px 0', overflow: 'hidden' }}>
-        <div style={{ padding: '0 48px', marginBottom: 36 }}>
+      <section style={{ background: '#E8F5E9', overflow: 'hidden', width: '100%' }}>
+        <div style={{
+          marginBottom: 36,
+          width: '100%',
+          padding: 'clamp(32px, 52px, 64px) clamp(12px, 5vw, 56px)',
+          maxWidth: '1400px',
+          margin: '0 auto',
+          boxSizing: 'border-box'
+        }}>
           {hasRating && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div
@@ -478,7 +525,7 @@ export default function StorytellingHome({
                 <span style={{ fontSize: 13 }}>⭐</span>
                 <span
                   style={{
-                    fontSize: 9,
+                    fontSize: 'clamp(8px, 9px, 11px)',
                     fontWeight: 700,
                     letterSpacing: '1.5px',
                     textTransform: 'uppercase',
@@ -488,18 +535,18 @@ export default function StorytellingHome({
                   Google Reviews
                 </span>
               </div>
-              <span style={{ fontSize: 10, color: TL, fontWeight: 600, letterSpacing: '1px' }}>
+              <span style={{ fontSize: 'clamp(9px, 10px, 12px)', color: TL, fontWeight: 600, letterSpacing: '1px' }}>
                 {publicRating!.avgRating.toFixed(1)} · {publicRating!.total.toLocaleString()} reviews
               </span>
             </div>
           )}
           <h2
             className="font-barlow font-black uppercase"
-            style={{ fontSize: 46, letterSpacing: '-0.5px', color: HEAD, lineHeight: 1 }}
+            style={{ fontSize: 'clamp(32px, 46px, 52px)', letterSpacing: '-0.5px', color: HEAD, lineHeight: 1 }}
           >
             WHAT THEY SAY
           </h2>
-          <p style={{ fontSize: 12, color: TL, marginTop: 8 }}>
+          <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginTop: 8 }}>
             {hasReviews
               ? 'Hover any card to pause. Read at your own pace.'
               : 'Be the first to leave a review — your feedback shows up here after dining with us.'}
@@ -639,15 +686,22 @@ export default function StorytellingHome({
 
       {/* ── Never Miss a Moment ───────────────────────────────────────────── */}
       {hasGallery && (
-      <section style={{ background: BG_GALLERY, padding: '52px 0', overflow: 'hidden' }}>
-        <div style={{ padding: '0 48px', marginBottom: 28 }}>
+      <section style={{ background: BG_GALLERY, overflow: 'hidden', width: '100%' }}>
+        <div style={{
+          marginBottom: 28,
+          width: '100%',
+          padding: 'clamp(32px, 52px, 64px) clamp(12px, 5vw, 56px)',
+          maxWidth: '1400px',
+          margin: '0 auto',
+          boxSizing: 'border-box'
+        }}>
           <h2
             className="font-barlow font-black uppercase"
-            style={{ fontSize: 46, letterSpacing: '-0.5px', color: HEAD }}
+            style={{ fontSize: 'clamp(32px, 46px, 52px)', letterSpacing: '-0.5px', color: HEAD }}
           >
             NEVER MISS A MOMENT
           </h2>
-          <p style={{ fontSize: 12, color: TL, marginTop: 6 }}>
+          <p style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginTop: 6 }}>
             Captured by our guests &amp; team — every dish, every smile, every day.
           </p>
         </div>
@@ -678,11 +732,11 @@ export default function StorytellingHome({
           </div>
         </div>
         {galleryHashtag && (
-          <div style={{ padding: '28px 48px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ padding: 'clamp(16px, 28px, 32px) clamp(20px, 48px, 56px) 0', display: 'flex', alignItems: 'center', gap: 12, maxWidth: 1400, margin: '0 auto' }}>
             <div style={{ width: 32, height: 2, background: PINK, borderRadius: 2 }} />
             <span
               style={{
-                fontSize: 10,
+                fontSize: 'clamp(9px, 10px, 12px)',
                 fontWeight: 600,
                 letterSpacing: '2px',
                 textTransform: 'uppercase',

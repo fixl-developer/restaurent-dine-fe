@@ -31,23 +31,33 @@ export default function LandingFooter({ restaurant }: LandingFooterProps) {
     <footer
       style={{
         background: WHITE,
-        padding: '44px 48px 28px',
         borderTop: '1px solid rgba(124,77,204,.08)',
+        width: '100%'
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: 28, marginBottom: 32 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 'clamp(16px, 28px, 36px)',
+        marginBottom: 'clamp(20px, 32px, 40px)',
+        width: '100%',
+        padding: 'clamp(28px, 44px, 56px) clamp(12px, 5vw, 56px) clamp(16px, 28px, 36px)',
+        maxWidth: '1400px',
+        margin: '0 auto',
+        boxSizing: 'border-box'
+      }}>
         <div>
-          <div className="font-lora italic" style={{ fontSize: 22, color: PINK, marginBottom: 10 }}>
+          <div className="font-lora italic" style={{ fontSize: 'clamp(18px, 22px, 26px)', color: PINK, marginBottom: 10 }}>
             {brandName}
           </div>
-          <p style={{ fontSize: 11, color: TL, lineHeight: 1.7, maxWidth: 200 }}>
+          <p style={{ fontSize: 'clamp(10px, 11px, 13px)', color: TL, lineHeight: 1.7, maxWidth: 200 }}>
             {brandCity}'s favourite neighbourhood café. Fresh food, specialty drinks, good energy.
           </p>
         </div>
         <div>
           <h4
             style={{
-              fontSize: 9,
+              fontSize: 'clamp(8px, 9px, 11px)',
               fontWeight: 700,
               letterSpacing: '2px',
               textTransform: 'uppercase',
@@ -67,7 +77,7 @@ export default function LandingFooter({ restaurant }: LandingFooterProps) {
               key={link.to}
               to={link.to}
               className="block cursor-pointer"
-              style={{ fontSize: 12, color: TL, marginBottom: 8, textDecoration: 'none' }}
+              style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 8, textDecoration: 'none' }}
             >
               {link.label}
             </Link>
@@ -76,7 +86,7 @@ export default function LandingFooter({ restaurant }: LandingFooterProps) {
         <div>
           <h4
             style={{
-              fontSize: 9,
+              fontSize: 'clamp(8px, 9px, 11px)',
               fontWeight: 700,
               letterSpacing: '2px',
               textTransform: 'uppercase',
@@ -90,7 +100,7 @@ export default function LandingFooter({ restaurant }: LandingFooterProps) {
             <a
               href={`tel:${brandPhone}`}
               className="block cursor-pointer"
-              style={{ fontSize: 12, color: TL, marginBottom: 8, textDecoration: 'none' }}
+              style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 8, textDecoration: 'none' }}
             >
               {brandPhone}
             </a>
@@ -99,13 +109,13 @@ export default function LandingFooter({ restaurant }: LandingFooterProps) {
             <a
               href={`mailto:${brandEmail}`}
               className="block cursor-pointer"
-              style={{ fontSize: 12, color: TL, marginBottom: 8, textDecoration: 'none' }}
+              style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 8, textDecoration: 'none' }}
             >
               {brandEmail}
             </a>
           )}
           {!brandPhone && !brandEmail && (
-            <span className="block" style={{ fontSize: 12, color: TL, marginBottom: 8 }}>
+            <span className="block" style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 8 }}>
               Get in touch
             </span>
           )}
@@ -113,7 +123,7 @@ export default function LandingFooter({ restaurant }: LandingFooterProps) {
         <div>
           <h4
             style={{
-              fontSize: 9,
+              fontSize: 'clamp(8px, 9px, 11px)',
               fontWeight: 700,
               letterSpacing: '2px',
               textTransform: 'uppercase',
@@ -123,24 +133,24 @@ export default function LandingFooter({ restaurant }: LandingFooterProps) {
           >
             Visit
           </h4>
-          <span className="block" style={{ fontSize: 12, color: TL, marginBottom: 8 }}>{brandAddress}</span>
-          <span className="block" style={{ fontSize: 12, color: TL, marginBottom: 8 }}>
+          <span className="block" style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 8 }}>{brandAddress}</span>
+          <span className="block" style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 8 }}>
             {brandCity}, {brandState}
           </span>
-          <span className="block" style={{ fontSize: 12, color: TL, marginBottom: 8 }}>{hoursSummary}</span>
+          <span className="block" style={{ fontSize: 'clamp(11px, 12px, 14px)', color: TL, marginBottom: 8 }}>{hoursSummary}</span>
         </div>
       </div>
       <div
-        className="flex justify-between items-center"
-        style={{ borderTop: '1px solid rgba(124,77,204,.08)', paddingTop: 20 }}
+        className="flex flex-wrap justify-between items-center gap-4"
+        style={{ borderTop: '1px solid rgba(124,77,204,.08)', paddingTop: 'clamp(12px, 20px, 28px)' }}
       >
-        <p style={{ fontSize: 10, color: TL }}>
+        <p style={{ fontSize: 'clamp(9px, 10px, 12px)', color: TL }}>
           © {new Date().getFullYear()} {brandName}. All rights reserved.
         </p>
-        <p style={{ fontSize: 10, color: PINK }}>
+        <p style={{ fontSize: 'clamp(9px, 10px, 12px)', color: PINK }}>
           📍 {brandCity}, {brandState}
         </p>
-        <p style={{ fontSize: 10, color: TL }}>Made with ♥</p>
+        <p style={{ fontSize: 'clamp(9px, 10px, 12px)', color: TL }}>Made with ♥</p>
       </div>
     </footer>
   );

@@ -322,8 +322,8 @@ export default function App() {
   return (
     <div
       id="root-container"
-      className="min-h-screen font-sans text-neutral-800 antialiased flex flex-col justify-between selection:bg-pink-100 selection:text-pink-600"
-      style={{ background: '#FFFFFF' }}
+      className="min-h-screen font-sans text-neutral-800 antialiased flex flex-col justify-between selection:bg-pink-100 selection:text-pink-600 w-full"
+      style={{ background: '#FFFFFF', width: '100%', overflowX: 'hidden' }}
     >
       {/* Legacy Header — only the order-tracker page needs it; other pages have their own */}
       {isOrderTrackerRoute && (
