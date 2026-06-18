@@ -456,7 +456,15 @@ export default function MenuPage({
         </div>
       )}
 
-      <section id="menu-slider" style={{ background: BG_MENU, padding: '64px 48px 80px', minHeight: '70vh' }}>
+      <section
+        id="menu-slider"
+        style={{
+          background: BG_MENU,
+          padding: 'clamp(40px, 6vw, 96px) clamp(16px, 4vw, 80px) clamp(56px, 7vw, 120px)',
+          minHeight: '70vh',
+        }}
+      >
+        <div style={{ maxWidth: 1600, margin: '0 auto' }}>
         <div style={{ marginBottom: 28 }}>
           <p className="font-script" style={{ fontSize: 15, color: TEAL, marginBottom: 2 }}>
             handpicked & freshly prepared ♡
@@ -516,7 +524,7 @@ export default function MenuPage({
         </div>
 
         {menuLoading && filteredItems.length === 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(220px, 18vw, 280px), 1fr))', gap: 'clamp(10px, 1vw, 20px)' }}>
             {Array.from({ length: 10 }).map((_, i) => (
               <div
                 key={i}
@@ -541,7 +549,7 @@ export default function MenuPage({
             No items in this category yet.
           </div>
         ) : showAllMenu ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(220px, 18vw, 280px), 1fr))', gap: 'clamp(10px, 1vw, 20px)' }}>
             {filteredItems.map((item, idx) => renderMenuCard(item, idx, true))}
           </div>
         ) : (
@@ -559,6 +567,7 @@ export default function MenuPage({
             </div>
           </div>
         )}
+        </div>
       </section>
 
       <LandingFooter restaurant={restaurant} />
