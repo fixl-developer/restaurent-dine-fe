@@ -156,21 +156,6 @@ export default function LandingHeader({ brandName, cartCount, onOpenCart }: Land
           </span>
         </button>
 
-        <Link
-          to="/staff"
-          style={{
-            fontSize: 'clamp(9px, 10px, 12px)',
-            fontWeight: 600,
-            letterSpacing: '1.5px',
-            textTransform: 'uppercase',
-            color: 'rgba(74,74,74,0.4)',
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
-          className="hidden sm:block hover:opacity-80 transition-opacity"
-        >
-          Staff Login
-        </Link>
       </div>
     </nav>
   );
