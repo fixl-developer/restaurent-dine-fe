@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import {
   ArrowLeft, Users, Clock, CheckCircle2, AlertCircle,
   Sparkles, CreditCard, Merge, MoveRight, Scissors,
-  X, ChevronRight, Eye, RefreshCw
+  X, ChevronRight, Eye, RefreshCw, LogOut
 } from 'lucide-react';
 import FloorPlanView, { type TableOccupant } from '@/components/floorplan/FloorPlanView';
 import type { TableDto, TableStatus as BackendTableStatus } from '@/lib/dto/tables';
+import { useLogout } from '@/hooks/useAuth';
 
 type TableStatus = 'vacant' | 'seated' | 'ordered' | 'awaiting-bill' | 'cleaning';
 
@@ -65,6 +66,7 @@ interface MergeConfirmState {
 }
 
 export default function TableOperations({ onExit }: { onExit: () => void }) {
+  const logoutMutation = useLogout();
   const [tables, setTables] = useState<FloorTable[]>(FLOOR_TABLES);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<ActionMode>(null);
@@ -180,6 +182,13 @@ export default function TableOperations({ onExit }: { onExit: () => void }) {
           >
             <ArrowLeft className="w-3 h-3" />
             Exit
+          </button>
+          <button
+            onClick={() => logoutMutation.mutate()}
+            className="flex items-center gap-1.5 text-[10px] font-mono text-[#E8447A]/70 border border-[#E8447A]/20 px-2.5 py-1.5 rounded-lg hover:border-[#E8447A]/60 hover:text-[#E8447A] transition-all uppercase tracking-widest"
+          >
+            <LogOut className="w-3 h-3" />
+            Sign Out
           </button>
         </div>
       </div>

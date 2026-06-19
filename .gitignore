@@ -15,3 +15,5 @@ tmp/
 
 # Backend lives in its own repository — keep it out of the FE repo.
 /backend/
+
+.vercel

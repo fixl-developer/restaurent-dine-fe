@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { Mail, Lock, ArrowRight, ShieldCheck, Coffee, Loader2, Sparkles } from 'lucide-react';
-
-const DEMO_CREDENTIALS = {
-  email: 'owner@smartdine.local',
-  password: 'Owner@12345',
-};
+import { Mail, Lock, ArrowRight, ShieldCheck, Coffee, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
-import { useStaffLogin, useStaffVerify2fa } from '@/hooks/useAuth';
+
+const DEMO_ROLES = [
+  { label: 'Owner',   email: 'owner@smartdine.local',   password: 'Owner@12345',   color: '#7C3AED' },
+  { label: 'Manager', email: 'manager@smartdine.local', password: 'Manager@12345', color: '#2563EB' },
+  { label: 'Kitchen', email: 'kitchen@smartdine.local', password: 'Kitchen@12345', color: '#EA580C' },
+  { label: 'Waiter',  email: 'waiter@smartdine.local',  password: 'Waiter@12345',  color: '#059669' },
+  { label: 'Cashier', email: 'cashier@smartdine.local', password: 'Cashier@12345', color: '#D97706' },
+];
+import { useStaffLogin, useStaffVerify2fa, useLogout } from '@/hooks/useAuth';
 
 interface LoginFormValues {
   email: string;
@@ -34,6 +37,8 @@ export default function LoginPage() {
 
   const loginMutation = useStaffLogin();
   const verifyMutation = useStaffVerify2fa();
+  const logoutMutation = useLogout();
+  const user = useAuthStore((s) => s.user);
 
   const [mfa, setMfa] = useState<{ userId: string; maskedPhone: string } | null>(null);
 
@@ -42,11 +47,16 @@ export default function LoginPage() {
   });
   const otpForm = useForm<OtpFormValues>({ defaultValues: { code: '' } });
 
-  const redirectTo = (location.state as LocationState)?.from?.pathname ?? '/admin';
 
   useEffect(() => {
-    if (accessToken) navigate(redirectTo, { replace: true });
-  }, [accessToken, navigate, redirectTo]);
+    if (!accessToken) return;
+    const role = user?.role?.key ?? '';
+    if (['owner', 'manager'].includes(role))  navigate('/admin',        { replace: true });
+    else if (role === 'kitchen')              navigate('/kds',          { replace: true });
+    else if (role === 'waiter')               navigate('/table-ops',    { replace: true });
+    else if (role === 'cashier')              navigate('/billing-ops',  { replace: true });
+    else                                      navigate('/vendor',       { replace: true });
+  }, [accessToken, navigate, user]);
 
   const onSubmitLogin = (values: LoginFormValues) => {
     loginMutation.mutate(values, {
@@ -63,16 +73,9 @@ export default function LoginPage() {
     verifyMutation.mutate({ userId: mfa.userId, code: values.code });
   };
 
-  const fillDemoAndSignIn = () => {
-    loginForm.setValue('email', DEMO_CREDENTIALS.email);
-    loginForm.setValue('password', DEMO_CREDENTIALS.password);
-    loginMutation.mutate(DEMO_CREDENTIALS, {
-      onSuccess: (data) => {
-        if (data.mfaRequired) {
-          setMfa({ userId: data.userId, maskedPhone: data.maskedPhone });
-        }
-      },
-    });
+  const fillRole = (email: string, password: string) => {
+    loginForm.setValue('email', email);
+    loginForm.setValue('password', password);
   };
 
   return (
@@ -100,6 +103,22 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* Already logged in banner */}
+        {accessToken && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-amber-800">Already signed in as {user?.name ?? 'Staff'}</p>
+              <p className="text-[10px] text-amber-600 mt-0.5 capitalize">{user?.role?.name ?? user?.role?.key}</p>
+            </div>
+            <button
+              onClick={() => logoutMutation.mutate()}
+              className="shrink-0 flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
+
         <div className="bg-white border border-pink-100 rounded-3xl shadow-sm overflow-hidden">
           {/* Header */}
           <div className="px-7 pt-7 pb-2">
@@ -115,31 +134,6 @@ export default function LoginPage() {
 
           {!mfa ? (
             <form onSubmit={loginForm.handleSubmit(onSubmitLogin)} className="px-7 pb-7 pt-5 space-y-4">
-              {/* Quick demo credentials shortcut */}
-              <button
-                type="button"
-                onClick={fillDemoAndSignIn}
-                disabled={loginMutation.isPending}
-                className="w-full group flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-50 to-amber-50 border border-pink-200 hover:border-pink-400 hover:shadow-sm transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Sparkles className="w-4 h-4 text-pink-500 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-neutral-800">Try the demo</p>
-                    <p className="text-[10px] text-neutral-500 truncate">
-                      {DEMO_CREDENTIALS.email}
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-pink-500 shrink-0 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-neutral-200" />
-                <span className="text-[10px] uppercase tracking-widest text-neutral-400">or sign in</span>
-                <div className="flex-1 h-px bg-neutral-200" />
-              </div>
-
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
                   Email
@@ -198,6 +192,33 @@ export default function LoginPage() {
                   </>
                 )}
               </button>
+
+              {/* Demo role quick-fill */}
+              <div className="pt-2">
+                <p className="text-[10px] uppercase tracking-widest text-neutral-400 text-center mb-3">
+                  Demo accounts
+                </p>
+                <div className="grid grid-cols-5 gap-2">
+                  {DEMO_ROLES.map((r) => (
+                    <button
+                      key={r.label}
+                      type="button"
+                      onClick={() => fillRole(r.email, r.password)}
+                      className="flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl border border-neutral-100 hover:border-neutral-300 hover:shadow-sm transition-all"
+                    >
+                      <span
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                        style={{ background: r.color }}
+                      >
+                        {r.label[0]}
+                      </span>
+                      <span className="text-[9px] font-semibold text-neutral-500 uppercase tracking-wide leading-none">
+                        {r.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </form>
           ) : (
             <form onSubmit={otpForm.handleSubmit(onSubmitOtp)} className="px-7 pb-7 pt-5 space-y-4">

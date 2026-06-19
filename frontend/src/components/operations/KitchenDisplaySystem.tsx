@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChefHat, Clock, Bell, CheckCheck, AlertTriangle, Utensils, Package, ArrowLeft,
-  Timer, X, ArrowRight, Volume2, VolumeX, Loader2,
+  Timer, X, ArrowRight, Volume2, VolumeX, Loader2, LogOut,
 } from 'lucide-react';
 import { useKdsQueue, useUpdateKdsItemStatus } from '@/hooks/useKds';
+import { useLogout } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import type { KdsOrderDto, OrderItemStatus } from '@/lib/dto/orders';
 
@@ -212,6 +213,7 @@ function KDSColumn({
 }
 
 export default function KitchenDisplaySystem({ onExit }: { onExit: () => void }) {
+  const logoutMutation = useLogout();
   const qc = useQueryClient();
   const [station, setStation] = useState<string | undefined>(undefined);
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -381,6 +383,13 @@ export default function KitchenDisplaySystem({ onExit }: { onExit: () => void })
           >
             <ArrowLeft className="w-3 h-3" />
             Exit
+          </button>
+          <button
+            onClick={() => logoutMutation.mutate()}
+            className="flex items-center gap-1.5 text-[10px] font-mono text-[#E8447A]/70 border border-[#E8447A]/20 px-2.5 py-1.5 rounded hover:border-[#E8447A]/60 hover:text-[#E8447A] transition-all uppercase tracking-widest cursor-pointer"
+          >
+            <LogOut className="w-3 h-3" />
+            Sign Out
           </button>
         </div>
       </div>

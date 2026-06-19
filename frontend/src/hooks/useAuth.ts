@@ -5,6 +5,7 @@
  * with the backend (login, OTP-verify, logout, /auth/me refresh).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
@@ -59,6 +60,7 @@ export function useLogout() {
   const logout = useAuthStore((s) => s.logout);
   const refreshToken = useAuthStore((s) => s.refreshToken);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   return useMutation({
     mutationFn: async () => {
@@ -72,6 +74,7 @@ export function useLogout() {
       logout();
       queryClient.clear();
       toast.success('Signed out');
+      navigate('/staff', { replace: true });
     },
   });
 }

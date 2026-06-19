@@ -390,6 +390,7 @@ export default function App() {
             }
           />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/staff" element={<LoginPage />} />
           <Route
             path="/admin/*"
             element={

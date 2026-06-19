@@ -2,8 +2,9 @@ import { useState } from 'react';
 import {
   ArrowLeft, Receipt, CreditCard, Banknote, Smartphone,
   Percent, Tag, Printer, CheckCircle2, X, ChevronDown,
-  Split, User, Phone, Hash, Building2, AlertCircle, Copy
+  Split, User, Phone, Hash, Building2, AlertCircle, Copy, LogOut
 } from 'lucide-react';
+import { useLogout } from '@/hooks/useAuth';
 
 interface BillItem {
   id: string;
@@ -77,6 +78,7 @@ const SGST_RATE = 0.025;
 interface SplitEntry { label: string; amount: number; paid: boolean; }
 
 export default function BillingPayments({ onExit }: { onExit: () => void }) {
+  const logoutMutation = useLogout();
   const [selectedTableId, setSelectedTableId] = useState<string>('t3');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
   const [couponInput, setCouponInput] = useState('');
@@ -194,6 +196,13 @@ export default function BillingPayments({ onExit }: { onExit: () => void }) {
           >
             <ArrowLeft className="w-3 h-3" />
             Exit
+          </button>
+          <button
+            onClick={() => logoutMutation.mutate()}
+            className="flex items-center gap-1.5 text-[10px] font-mono text-[#FFFFFF]/50 border border-[rgba(240,234,210,0.15)] px-2.5 py-1.5 rounded-lg hover:border-[#FFFFFF]/40 hover:text-[#FFFFFF] transition-all uppercase tracking-widest"
+          >
+            <LogOut className="w-3 h-3" />
+            Sign Out
           </button>
         </div>
       </div>
