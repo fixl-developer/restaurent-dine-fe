@@ -1,4 +1,6 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useGuestOrderByNumber } from '../hooks/useGuest';
 import { DECOR_IMAGES } from '../foodData';
 import type { MenuItem } from '../types';
 import type { RestaurantDto } from '../lib/dto/restaurant';
@@ -144,6 +146,32 @@ export default function StorytellingHome({
   landingContent,
 }: StorytellingHomeProps) {
   const navigate = useNavigate();
+  const lookupMutation = useGuestOrderByNumber();
+
+  // Persist last placed order so customers can track after navigating away
+  const [lastOrder, setLastOrder] = useState<{ id: string; orderNumber: string } | null>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('sd_last_order');
+      if (!raw) return;
+      const o = JSON.parse(raw) as { id: string; orderNumber: string; ts: number };
+      if (Date.now() - o.ts < 4 * 60 * 60 * 1000) setLastOrder(o);
+      else localStorage.removeItem('sd_last_order');
+    } catch {
+      localStorage.removeItem('sd_last_order');
+    }
+  }, []);
+
+  const [orderNumInput, setOrderNumInput] = useState('');
+  const [findOpen, setFindOpen] = useState(false);
+
+  async function handleFindOrder(e: React.FormEvent) {
+    e.preventDefault();
+    const num = orderNumInput.trim();
+    if (!num) return;
+    const order = await lookupMutation.mutateAsync(num).catch(() => null);
+    if (order) navigate(`/track/${order.id}`);
+  }
 
   // Restaurant info — fall back to hardcoded copy when backend data missing.
   const brandName = restaurant?.brand.name ?? 'SmartDine';
@@ -187,6 +215,58 @@ export default function StorytellingHome({
   return (
     <div className="w-full font-sans" style={{ width: '100%', overflow: 'hidden' }}>
       <LandingHeader brandName={brandName} cartCount={cartCount} onOpenCart={onOpenCart} />
+
+      {/* ── Active order banner ──────────────────────────────────────────── */}
+      {lastOrder ? (
+        <div style={{ background: '#1a1a1a', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', margin: 0 }}>
+            Order <strong style={{ color: '#fff' }}>#{lastOrder.orderNumber}</strong> is in progress
+          </p>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <Link
+              to={`/track/${lastOrder.id}`}
+              style={{ fontSize: 12, fontWeight: 700, color: '#E8447A', textDecoration: 'none', letterSpacing: '0.5px' }}
+            >
+              Track order →
+            </Link>
+            <button
+              onClick={() => { localStorage.removeItem('sd_last_order'); setLastOrder(null); }}
+              style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: '#F7F7F7', borderBottom: '1px solid rgba(26,26,26,0.08)', padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
+          {findOpen ? (
+            <form onSubmit={handleFindOrder} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                autoFocus
+                value={orderNumInput}
+                onChange={e => setOrderNumInput(e.target.value)}
+                placeholder="Order number e.g. 20260724-0001"
+                style={{ fontSize: 12, border: '1px solid rgba(26,26,26,0.2)', borderRadius: 8, padding: '5px 12px', width: 220, outline: 'none' }}
+              />
+              <button
+                type="submit"
+                disabled={lookupMutation.isPending}
+                style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#E8447A', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+              >
+                {lookupMutation.isPending ? '…' : 'Find'}
+              </button>
+              <button type="button" onClick={() => setFindOpen(false)} style={{ fontSize: 11, color: 'rgba(26,26,26,0.4)', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+            </form>
+          ) : (
+            <button
+              onClick={() => setFindOpen(true)}
+              style={{ fontSize: 11, fontWeight: 600, color: '#E8447A', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.5px' }}
+            >
+              Find my order
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section

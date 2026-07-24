@@ -77,6 +77,15 @@ export function useAddItemsToGuestOrder() {
   });
 }
 
+// ── Order lookup by order number ────────────────────────────────────────────
+export function useGuestOrderByNumber() {
+  return useMutation({
+    mutationFn: (orderNumber: string) =>
+      api.get<GuestOrderDto>(`/guest/orders/by-number/${encodeURIComponent(orderNumber)}`, { noAuth: true }),
+    onError: (err) => handleError(err, 'Order not found'),
+  });
+}
+
 // ── Guest request (water/bill/call_waiter) ──────────────────────────────────
 export function useSendGuestRequest() {
   return useMutation({

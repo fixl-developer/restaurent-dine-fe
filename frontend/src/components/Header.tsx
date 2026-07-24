@@ -15,14 +15,10 @@ export default function Header({ activePage, onChangePage, onScrollTo, cartCount
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems = [
-    { id: 'home',         label: 'Home'              },
-    { id: 'order-tracker',label: 'Order Tracker'     },
-    { id: 'vendor',       label: 'Vendor Console'    },
-    { id: 'admin',        label: 'Admin Portal'      },
-    { id: 'kds',          label: 'Kitchen Display'   },
-    { id: 'table-ops',    label: 'Table Operations'  },
-    { id: 'billing-ops',  label: 'Billing & Payments'},
-    { id: 'qr-order',     label: 'QR Ordering'       },
+    { id: 'home', label: 'Home' },
+    { id: 'menu', label: 'Menu' },
+    { id: 'reserve', label: 'Reserve' },
+    { id: 'combos', label: 'Combos' },
   ];
 
   return (

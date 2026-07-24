@@ -1,21 +1,43 @@
-import { useState, useMemo } from 'react';
+/**
+ * QROrderingFlow — real backend-connected customer ordering flow.
+ * Accessed via /qr-order?qr=<slug>&table=<tableId>&tableNum=<displayNum>
+ *
+ * Steps:
+ *  entry → menu → cart → checkout
+ *    dine-in  → (place order) → order-placed → tracking
+ *    takeaway → otp-verify → pickup-time → (place order) → token → token-status / token-board
+ */
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
-  QrCode, UtensilsCrossed, ShoppingBag, Search, SlidersHorizontal,
-  Plus, Minus, X, ChevronRight, ChevronLeft, CheckCircle2, Clock,
-  ArrowLeft, Star, Leaf, Flame, Tag, Smartphone, Banknote, CreditCard,
-  MapPin, Phone, User, Package, Bell, ChevronDown, BadgeCheck,
-  Home, Bike, Hash
+  QrCode, UtensilsCrossed, ShoppingBag, Search,
+  Plus, Minus, X, ChevronRight, CheckCircle2, Clock,
+  ArrowLeft, Star, Leaf, Flame, Tag, Hash, Bell,
+  Loader2, Phone, User, Smartphone, Banknote, CreditCard,
+  AlertCircle,
 } from 'lucide-react';
-import cakeImg from '../../assets/images/cake.jpg';
-import eggNoodlesImg from '../../assets/images/eggnoodles.jpg';
-import eggSaladImg from '../../assets/images/eggsalad.jpg';
-import noodlesImg from '../../assets/images/noodles.jpg';
-import oatsImg from '../../assets/images/oats.jpg';
-import oats2Img from '../../assets/images/oats2.jpg';
-import saladImg from '../../assets/images/salad.jpg';
-import sauceImg from '../../assets/images/sauce.jpg';
+import {
+  usePublicMenu,
+  usePlaceDineInOrder,
+  usePlaceWindowOrder,
+  useGuestOrder,
+  useRequestGuestOtp,
+  useVerifyGuestOtp,
+} from '@/hooks/useGuest';
+import { useSocket } from '@/hooks/useSocket';
+import type {
+  PublicCategory,
+  PublicMenuItem,
+  PublicVariant,
+  PublicModifier,
+  PublicModifierGroup,
+  GuestOrderDto,
+} from '@/lib/dto/guest';
+import type { OrderStatus } from '@/lib/dto/orders';
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type OrderType = 'dine-in' | 'takeaway';
 type FlowStep =
@@ -23,536 +45,754 @@ type FlowStep =
   | 'menu'
   | 'cart'
   | 'checkout'
+  | 'otp-verify'
+  | 'pickup-time'
   | 'order-placed'
   | 'tracking'
-  | 'pickup-time'
   | 'token'
   | 'token-status'
   | 'token-board';
 
-type TrackingStatus = 'placed' | 'accepted' | 'preparing' | 'ready' | 'served';
-
-interface Variant { name: string; price: number; }
-interface Addon  { name: string; price: number; }
-
-interface QRMenuItem {
-  id: string; name: string; price: number; category: string;
-  description: string; image: string; calories: number;
-  tags: string[]; rating: number; reviews: number;
-  variants?: Variant[]; addons?: Addon[];
-  isVeg: boolean; isSpicy?: boolean; isBestseller?: boolean;
-}
-
 interface CartEntry {
-  item: QRMenuItem;
+  item: PublicMenuItem;
+  categoryName: string;
   qty: number;
-  variant?: Variant;
-  addons: Addon[];
+  variant?: PublicVariant;
+  selectedModifiers: Array<{ group: PublicModifierGroup; modifier: PublicModifier }>;
   notes: string;
   lineTotal: number;
 }
 
-// ─── Mock Menu ──────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const QR_MENU: QRMenuItem[] = [
-  {
-    id: 'm1', name: 'Strawberry Icing Velvet Cake', price: 6.80, category: 'Sweets',
-    description: 'A beautiful single-slice sponge cake dressed in fluffy pastel strawberry whipped icing & rainbow confetti.',
-    image: cakeImg, calories: 420, tags: ['Veg', 'Bestseller'], rating: 4.9, reviews: 312, isVeg: true, isBestseller: true,
-    variants: [{ name: 'Single Slice', price: 6.80 }, { name: 'Double Slice', price: 11.50 }],
-    addons: [{ name: 'Extra Strawberry Drizzle', price: 0.80 }, { name: 'Whipped Cream', price: 0.60 }],
-  },
-  {
-    id: 'm2', name: 'Double Matcha Crème Mille Crêpe', price: 7.90, category: 'Sweets',
-    description: 'Twenty paper-thin crêpe layers layered with organic Uji matcha white chocolate custard cream.',
-    image: oats2Img, calories: 380, tags: ['Veg', 'New'], rating: 4.8, reviews: 89, isVeg: true,
-    addons: [{ name: 'Matcha Powder Dusting', price: 0.50 }, { name: 'Rose Petal Garnish', price: 0.75 }],
-  },
-  {
-    id: 'm3', name: 'Coquette Berry Whipped Princess Cake', price: 8.20, category: 'Sweets',
-    description: 'Double chiffon layers filled with vanilla custard, glazed peaches, and high-purity strawberries.',
-    image: cakeImg, calories: 450, tags: ['Veg', 'House Special'], rating: 4.9, reviews: 204, isVeg: true, isBestseller: true,
-    variants: [{ name: 'Regular', price: 8.20 }, { name: 'Large Slice', price: 12.40 }],
-  },
-  {
-    id: 'm4', name: 'Golden Peach Morning Oat Bowl', price: 8.50, category: 'Sweets',
-    description: 'Nourishing organic oats cooked in almond milk, layered with fresh peach slices & sweet local honey.',
-    image: oats2Img, calories: 310, tags: ['Veg', 'Healthy'], rating: 4.7, reviews: 156, isVeg: true,
-    addons: [{ name: 'Granola Crunch', price: 0.80 }, { name: 'Extra Honey', price: 0.40 }],
-  },
-  {
-    id: 'm5', name: 'Garden Fresh Tossed Salad', price: 9.50, category: 'Mains',
-    description: 'Crisp green leaf base, tender baby herbs, cucumber reels, and a light splash of peach vinaigrette.',
-    image: saladImg, calories: 190, tags: ['Veg', 'Raw Organic', 'Light'], rating: 4.6, reviews: 98, isVeg: true,
-    addons: [{ name: 'Grilled Chicken', price: 3.50 }, { name: 'Avocado', price: 2.00 }, { name: 'Extra Dressing', price: 0.60 }],
-  },
-  {
-    id: 'm6', name: 'Sesame Glazed Braised Pork Rice', price: 13.90, category: 'Mains',
-    description: 'Melt-in-your-mouth slow braised pork shoulder over fluffy white sushi rice with pickled cucumbers.',
-    image: sauceImg, calories: 580, tags: ['Non-Veg', 'Chef Recommended'], rating: 4.9, reviews: 267, isVeg: false, isBestseller: true,
-    variants: [{ name: 'Regular Bowl', price: 13.90 }, { name: 'Large Bowl', price: 17.50 }],
-    addons: [{ name: 'Soft Boiled Egg', price: 1.50 }, { name: 'Extra Sesame Drizzle', price: 0.80 }],
-  },
-  {
-    id: 'm7', name: 'Sichuan Sesame Chili Noodles', price: 11.50, category: 'Mains',
-    description: 'Cozy wheat noodles tossed in roasted sesame oil, sweet soy broth, minced scallions & chili paste.',
-    image: noodlesImg, calories: 490, tags: ['Veg', 'Spicy'], rating: 4.8, reviews: 183, isVeg: true, isSpicy: true,
-    variants: [{ name: 'Regular', price: 11.50 }, { name: 'Extra Noodles', price: 14.00 }],
-    addons: [{ name: 'Extra Chili Oil', price: 0.50 }, { name: 'Crispy Tofu', price: 2.00 }],
-  },
-  {
-    id: 'm8', name: 'Wok-fired Handmade Egg Noodles', price: 12.00, category: 'Mains',
-    description: 'Broad golden egg noodles tossed in garlic soy, fresh mixed spring greens, and white pepper broth.',
-    image: eggNoodlesImg, calories: 520, tags: ['Non-Veg', 'Chef Traditional'], rating: 4.7, reviews: 142, isVeg: false,
-    addons: [{ name: 'Extra Egg', price: 1.00 }, { name: 'Garlic Butter', price: 0.80 }],
-  },
-  {
-    id: 's1', name: 'Creamy Potato & Egg Salad Plate', price: 4.80, category: 'Sides',
-    description: 'Premium light mustard egg salad mashed with cold diced green potatoes in a double-walled bowl.',
-    image: eggSaladImg, calories: 260, tags: ['Veg', 'Savory'], rating: 4.5, reviews: 71, isVeg: true,
-  },
-  {
-    id: 's2', name: 'Diner Golden Egg Potato Croquettes', price: 5.20, category: 'Sides',
-    description: 'Crispy fried panko outer layer filled with soft mashed potatoes and fresh sweet herbs.',
-    image: eggSaladImg, calories: 240, tags: ['Veg', 'Hot Side', 'Crispy'], rating: 4.6, reviews: 94, isVeg: true,
-    addons: [{ name: 'Dipping Sauce', price: 0.80 }],
-  },
-  {
-    id: 'd1', name: 'Peach Garden Strawberry Matcha Latte', price: 5.50, category: 'Drinks',
-    description: 'Ceremonial stone-ground green tea over a base of fresh organic strawberry pink milk foam.',
-    image: oatsImg, calories: 160, tags: ['Veg', 'Bestseller', 'Iced'], rating: 4.9, reviews: 389, isVeg: true, isBestseller: true,
-    variants: [{ name: 'Regular (300ml)', price: 5.50 }, { name: 'Large (500ml)', price: 7.00 }],
-    addons: [{ name: 'Extra Matcha Shot', price: 1.00 }, { name: 'Oat Milk Upgrade', price: 0.80 }],
-  },
-  {
-    id: 'd2', name: 'Peach Oatmeal Cream Smoothie', price: 5.00, category: 'Drinks',
-    description: 'Rich blended cream shake with organic peach juice base, oatmeal milk froth and a sweet honey drizzle.',
-    image: oats2Img, calories: 220, tags: ['Veg', 'Creamy'], rating: 4.7, reviews: 145, isVeg: true,
-    variants: [{ name: 'Regular (300ml)', price: 5.00 }, { name: 'Large (500ml)', price: 6.50 }],
-  },
-  {
-    id: 'd3', name: 'Sweet Raspberry Infusion Soda', price: 4.80, category: 'Drinks',
-    description: 'Sparkling mineral infusion with crushed forest strawberries and sweet sugarcane nectar.',
-    image: oatsImg, calories: 120, tags: ['Veg', 'Iced Cold', 'Sparkling'], rating: 4.6, reviews: 108, isVeg: true,
-  },
+const PICKUP_SLOTS = ['ASAP (~20 min)', '30 minutes', '45 minutes', '1 hour', '1.5 hours'] as const;
+
+const DINE_IN_STEPS: { status: OrderStatus; label: string }[] = [
+  { status: 'placed',    label: 'Order Placed' },
+  { status: 'accepted',  label: 'Accepted by Kitchen' },
+  { status: 'preparing', label: 'Preparing Your Food' },
+  { status: 'ready',     label: 'Ready to Serve!' },
 ];
 
-const CATEGORIES = ['All', 'Sweets', 'Mains', 'Sides', 'Drinks'];
-const COUPON_MAP: Record<string, number> = { 'FIRST10': 10, 'SMART5': 5, 'QR15': 15 };
-const PICKUP_SLOTS = ['ASAP (~20 min)', '30 minutes', '45 minutes', '1 hour', '1.5 hours'];
-const TRACKING_STEPS: { id: TrackingStatus; label: string; desc: string }[] = [
-  { id: 'placed',    label: 'Order Placed',     desc: 'Your order has been received' },
-  { id: 'accepted',  label: 'Accepted',          desc: 'Restaurant confirmed your order' },
-  { id: 'preparing', label: 'Preparing',         desc: 'Chef is preparing your meal' },
-  { id: 'ready',     label: 'Ready',             desc: 'Your order is ready to serve' },
-  { id: 'served',    label: 'Served',            desc: 'Enjoy your meal!' },
+const WINDOW_STEPS: { status: OrderStatus; label: string }[] = [
+  { status: 'placed',    label: 'Order Placed' },
+  { status: 'accepted',  label: 'Accepted by Kitchen' },
+  { status: 'preparing', label: 'Preparing Your Order' },
+  { status: 'ready',     label: 'Ready for Pickup!' },
 ];
 
-// ─── Sub-components ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function MenuCard({ item, onView, onQuickAdd }: {
-  item: QRMenuItem;
-  onView: (item: QRMenuItem) => void;
-  onQuickAdd: (item: QRMenuItem) => void;
-}) {
-  return (
-    <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-      <button onClick={() => onView(item)} className="relative overflow-hidden aspect-[4/3] shrink-0">
-        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-        {item.isBestseller && (
-          <span className="absolute top-2 left-2 bg-[#1a1a1a] text-[#E8447A] text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full">
-            ★ Bestseller
-          </span>
-        )}
-        <div className="absolute top-2 right-2 flex gap-1">
-          {item.isVeg && <span className="w-5 h-5 rounded bg-white border-2 border-emerald-500 flex items-center justify-center"><Leaf className="w-2.5 h-2.5 text-emerald-600" /></span>}
-          {item.isSpicy && <span className="w-5 h-5 rounded bg-white border-2 border-red-400 flex items-center justify-center"><Flame className="w-2.5 h-2.5 text-red-500" /></span>}
-        </div>
-      </button>
-      <div className="p-3 flex flex-col gap-2 flex-1">
-        <div>
-          <h3 className="text-[13px] font-semibold text-[#1a1a1a] leading-snug line-clamp-2">{item.name}</h3>
-          <p className="text-[11px] text-[#1a1a1a]/50 mt-0.5 line-clamp-2 leading-snug">{item.description}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {item.tags.slice(0, 2).map(t => (
-            <span key={t} className="text-[9px] font-mono bg-[#FFFFFF] text-[#1a1a1a]/50 px-1.5 py-0.5 rounded-full uppercase">{t}</span>
-          ))}
-          <div className="flex items-center gap-0.5 ml-auto">
-            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-            <span className="text-[10px] font-mono text-[#1a1a1a]/60">{item.rating}</span>
-          </div>
-        </div>
-        <div className="flex items-center justify-between mt-auto pt-1 border-t border-[rgba(26,26,26,0.06)]">
-          <span className="text-[14px] font-bold text-[#1a1a1a]">₹{(item.price * 83).toFixed(0)}</span>
-          <button
-            onClick={() => onQuickAdd(item)}
-            className="w-8 h-8 rounded-full bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 flex items-center justify-center transition-colors"
-          >
-            <Plus className="w-4 h-4 text-[#FFFFFF]" />
-          </button>
-        </div>
-      </div>
-    </div>
+function fmtINR(n: number): string {
+  return `₹${Math.round(n)}`;
+}
+
+function effectivePrice(item: PublicMenuItem, variant?: PublicVariant): number {
+  if (!variant) return item.basePrice;
+  return variant.absolutePrice ?? (item.basePrice + variant.priceDelta);
+}
+
+function isVeg(item: PublicMenuItem): boolean {
+  return item.foodType === 'veg' || item.foodType === 'vegan';
+}
+
+function isSpicy(item: PublicMenuItem): boolean {
+  return (item.spiceLevel ?? 0) >= 3;
+}
+
+function isBestseller(item: PublicMenuItem): boolean {
+  return item.tags.some(t =>
+    ['bestseller', 'popular', 'must try', 'chef special'].includes(t.toLowerCase()),
   );
 }
 
-function ItemDetailModal({ item, onClose, onAddToCart }: {
-  item: QRMenuItem;
+function slotToISO(slot: string): string {
+  const offsets: Record<string, number> = {
+    'ASAP (~20 min)': 20,
+    '30 minutes': 30,
+    '45 minutes': 45,
+    '1 hour': 60,
+    '1.5 hours': 90,
+  };
+  return new Date(Date.now() + (offsets[slot] ?? 30) * 60_000).toISOString();
+}
+
+const SD_ORDER_KEY = 'sd_last_order';
+
+function saveLastOrder(order: GuestOrderDto) {
+  localStorage.setItem(
+    SD_ORDER_KEY,
+    JSON.stringify({ id: order.id, orderNumber: order.orderNumber, channel: order.channel, ts: Date.now() }),
+  );
+}
+
+function cartKey(entry: Pick<CartEntry, 'item' | 'variant' | 'selectedModifiers' | 'notes'>): string {
+  return [
+    entry.item.id,
+    entry.variant?.id ?? '',
+    entry.selectedModifiers.map(m => m.modifier.id).sort().join(','),
+    entry.notes,
+  ].join('|');
+}
+
+// ─── ItemDetailModal ──────────────────────────────────────────────────────────
+
+function ItemDetailModal({
+  item,
+  categoryName,
+  onClose,
+  onAdd,
+}: {
+  item: PublicMenuItem;
+  categoryName: string;
   onClose: () => void;
-  onAddToCart: (item: QRMenuItem, qty: number, variant?: Variant, addons?: Addon[], notes?: string) => void;
+  onAdd: (entry: CartEntry) => void;
 }) {
+  const [selectedVariant, setSelectedVariant] = useState<PublicVariant | undefined>(
+    item.variants[0],
+  );
+  const [selectedMods, setSelectedMods] = useState<Array<{ group: PublicModifierGroup; modifier: PublicModifier }>>(() => {
+    const defaults: Array<{ group: PublicModifierGroup; modifier: PublicModifier }> = [];
+    for (const g of item.modifierGroups) {
+      for (const m of g.modifiers) {
+        if (m.isDefault) defaults.push({ group: g, modifier: m });
+      }
+    }
+    return defaults;
+  });
   const [qty, setQty] = useState(1);
-  const [selectedVariant, setSelectedVariant] = useState<Variant | undefined>(item.variants?.[0]);
-  const [selectedAddons, setSelectedAddons] = useState<Addon[]>([]);
   const [notes, setNotes] = useState('');
 
-  const basePrice = selectedVariant?.price ?? item.price;
-  const addonTotal = selectedAddons.reduce((s, a) => s + a.price, 0);
-  const lineTotal = (basePrice + addonTotal) * qty;
+  const basePrice = effectivePrice(item, selectedVariant);
+  const modTotal = selectedMods.reduce((s, { modifier }) => s + modifier.priceDelta, 0);
+  const lineTotal = (basePrice + modTotal) * qty;
 
-  const toggleAddon = (a: Addon) => {
-    setSelectedAddons(prev =>
-      prev.find(x => x.name === a.name) ? prev.filter(x => x.name !== a.name) : [...prev, a]
-    );
-  };
+  function toggleModifier(group: PublicModifierGroup, modifier: PublicModifier) {
+    setSelectedMods(prev => {
+      const exists = prev.some(m => m.modifier.id === modifier.id);
+      if (exists) return prev.filter(m => m.modifier.id !== modifier.id);
+      if (group.maxSelections === 1) {
+        return [...prev.filter(m => m.group.id !== group.id), { group, modifier }];
+      }
+      const groupCount = prev.filter(m => m.group.id === group.id).length;
+      if (groupCount >= group.maxSelections) return prev;
+      return [...prev, { group, modifier }];
+    });
+  }
+
+  function handleAdd() {
+    for (const group of item.modifierGroups) {
+      if (!group.isRequired) continue;
+      const selected = selectedMods.filter(m => m.group.id === group.id).length;
+      if (selected < group.minSelections) {
+        toast.error(`Please select at least ${group.minSelections} from "${group.name}"`);
+        return;
+      }
+    }
+    onAdd({ item, categoryName, qty, variant: selectedVariant, selectedModifiers: selectedMods, notes, lineTotal });
+    onClose();
+  }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center">
-      <div className="bg-[#FFFFFF] w-full sm:max-w-md sm:rounded-[22px] rounded-t-2xl max-h-[92vh] flex flex-col overflow-hidden">
-        <div className="relative h-52 shrink-0">
-          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#FFFFFF]/90 flex items-center justify-center shadow-md"
-          >
-            <X className="w-4 h-4 text-[#1a1a1a]" />
-          </button>
-          <div className="absolute top-3 left-3 flex gap-1.5">
-            {item.isVeg && <span className="w-6 h-6 rounded bg-white border-2 border-emerald-500 flex items-center justify-center"><Leaf className="w-3 h-3 text-emerald-600" /></span>}
-            {item.isBestseller && <span className="bg-[#1a1a1a] text-[#E8447A] text-[9px] font-mono px-2 py-0.5 rounded-full uppercase">★ Bestseller</span>}
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white w-full max-w-md max-h-[90vh] flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden">
+        {/* Image or colour header */}
+        {item.imageUrl ? (
+          <div className="h-48 relative shrink-0">
+            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+            <button
+              onClick={onClose}
+              className="absolute top-3 right-3 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div>
-            <h2 className="text-[16px] font-barlow font-black uppercase text-[#1a1a1a]">{item.name}</h2>
-            <div className="flex items-center gap-3 mt-1">
-              <div className="flex items-center gap-1">
-                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span className="text-[12px] font-mono text-[#1a1a1a]/60">{item.rating} ({item.reviews} reviews)</span>
-              </div>
-              <span className="text-[10px] font-mono text-[#1a1a1a]/40">{item.calories} cal</span>
+        ) : (
+          <div className="h-28 bg-[#E8447A]/10 flex items-center justify-between px-5 shrink-0">
+            <div className="w-14 h-14 rounded-2xl bg-[#E8447A]/20 flex items-center justify-center">
+              <span className="text-2xl font-black text-[#E8447A]">{item.name[0]}</span>
             </div>
-            <p className="text-[12px] text-[#1a1a1a]/50 mt-2 leading-relaxed">{item.description}</p>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center text-[#1a1a1a]/50">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-[18px] font-barlow font-black uppercase text-[#1a1a1a]">{item.name}</h2>
+              <div className="flex items-center gap-1 shrink-0">
+                {isVeg(item) && <Leaf className="w-4 h-4 text-green-600" />}
+                {isSpicy(item) && <Flame className="w-4 h-4 text-orange-500" />}
+              </div>
+            </div>
+            {item.description && (
+              <p className="text-[12px] text-[#1a1a1a]/50 mt-1">{item.description}</p>
+            )}
+            <p className="text-[20px] font-black font-mono text-[#1a1a1a] mt-2">
+              {fmtINR(basePrice + modTotal)}
+            </p>
           </div>
 
-          {item.variants && (
+          {/* Variants */}
+          {item.variants.length > 0 && (
             <div>
-              <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest mb-2">Size / Variant</p>
-              <div className="flex flex-wrap gap-2">
+              <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a] mb-2">Size / Variant</p>
+              <div className="space-y-2">
                 {item.variants.map(v => (
                   <button
-                    key={v.name}
+                    key={v.id}
                     onClick={() => setSelectedVariant(v)}
-                    className={`px-3 py-1.5 rounded-xl border-2 text-[12px] font-medium transition-all
-                      ${selectedVariant?.name === v.name
-                        ? 'border-[#E8447A] bg-[#E8447A]/15 text-[#1a1a1a]'
-                        : 'border-[rgba(26,26,26,0.18)] text-[#1a1a1a]/60 hover:border-[rgba(26,26,26,0.30)]'}`}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all
+                      ${selectedVariant?.id === v.id
+                        ? 'border-[#E8447A] bg-[#E8447A]/5'
+                        : 'border-[rgba(26,26,26,0.18)] hover:border-[#E8447A]/50'}`}
                   >
-                    {v.name} · <span className="font-mono">₹{(v.price * 83).toFixed(0)}</span>
+                    <span className="text-[13px] font-medium text-[#1a1a1a]">{v.name}</span>
+                    <span className="text-[13px] font-mono text-[#1a1a1a]">{fmtINR(effectivePrice(item, v))}</span>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {item.addons && item.addons.length > 0 && (
-            <div>
-              <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest mb-2">Add-ons (Optional)</p>
+          {/* Modifier groups */}
+          {item.modifierGroups.map(group => (
+            <div key={group.id}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a]">{group.name}</p>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium
+                  ${group.isRequired ? 'bg-[#E8447A]/10 text-[#E8447A]' : 'bg-neutral-100 text-neutral-500'}`}>
+                  {group.isRequired ? 'Required' : 'Optional'}
+                </span>
+              </div>
               <div className="space-y-2">
-                {item.addons.map(a => {
-                  const checked = selectedAddons.find(x => x.name === a.name);
+                {group.modifiers.map(mod => {
+                  const isSelected = selectedMods.some(m => m.modifier.id === mod.id);
                   return (
                     <button
-                      key={a.name}
-                      onClick={() => toggleAddon(a)}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all text-left
-                        ${checked ? 'border-[#E8447A]/60 bg-[#E8447A]/10' : 'border-[rgba(26,26,26,0.15)] hover:border-[rgba(26,26,26,0.25)]'}`}
+                      key={mod.id}
+                      onClick={() => toggleModifier(group, mod)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all
+                        ${isSelected
+                          ? 'border-[#E8447A] bg-[#E8447A]/5'
+                          : 'border-[rgba(26,26,26,0.18)] hover:border-[#E8447A]/50'}`}
                     >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all
-                          ${checked ? 'bg-[#1a1a1a] border-[#1a1a1a]' : 'border-[rgba(26,26,26,0.25)]'}`}
-                        >
-                          {checked && <CheckCircle2 className="w-3 h-3 text-[#FFFFFF]" />}
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors
+                          ${isSelected ? 'border-[#E8447A] bg-[#E8447A]' : 'border-[rgba(26,26,26,0.3)]'}`}>
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </div>
-                        <span className="text-[12px] text-[#1a1a1a]">{a.name}</span>
+                        <span className="text-[13px] text-[#1a1a1a]">{mod.name}</span>
                       </div>
-                      <span className="text-[12px] font-mono text-[#1a1a1a]/50">+ ₹{(a.price * 83).toFixed(0)}</span>
+                      {mod.priceDelta > 0 && (
+                        <span className="text-[12px] font-mono text-[#1a1a1a]/60">+{fmtINR(mod.priceDelta)}</span>
+                      )}
                     </button>
                   );
                 })}
               </div>
             </div>
-          )}
+          ))}
 
+          {/* Notes */}
           <div>
-            <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest mb-2">Special Instructions</p>
+            <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a] mb-2">Special Instructions</p>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Any allergies, preferences, or special requests..."
+              placeholder="Any special requests? (optional)"
               rows={2}
-              className="w-full border border-[rgba(26,26,26,0.18)] rounded-xl px-3 py-2 text-[12px] text-[#1a1a1a] outline-none focus:border-[#E8447A] focus:ring-2 focus:ring-[#E8447A]/20 resize-none bg-white"
+              className="w-full px-4 py-3 rounded-xl border border-[rgba(26,26,26,0.18)] text-[13px] text-[#1a1a1a] placeholder-[#1a1a1a]/30 resize-none focus:outline-none focus:border-[#E8447A]/50"
             />
           </div>
         </div>
 
-        {/* Bottom Action */}
-        <div className="border-t border-[rgba(26,26,26,0.08)] p-4 flex items-center gap-3">
-          <div className="flex items-center gap-3 border border-[rgba(26,26,26,0.18)] rounded-xl px-3 py-2">
-            <button onClick={() => setQty(q => Math.max(1, q - 1))} className="text-[#1a1a1a]/50 hover:text-[#1a1a1a]"><Minus className="w-4 h-4" /></button>
-            <span className="text-[14px] font-mono font-bold w-5 text-center text-[#1a1a1a]">{qty}</span>
-            <button onClick={() => setQty(q => q + 1)} className="text-[#1a1a1a]/50 hover:text-[#1a1a1a]"><Plus className="w-4 h-4" /></button>
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-[rgba(26,26,26,0.10)] shrink-0">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setQty(q => Math.max(1, q - 1))}
+                className="w-9 h-9 rounded-full bg-[#1a1a1a]/5 flex items-center justify-center"
+              >
+                <Minus className="w-4 h-4 text-[#1a1a1a]" />
+              </button>
+              <span className="text-[18px] font-black font-mono text-[#1a1a1a] w-6 text-center">{qty}</span>
+              <button
+                onClick={() => setQty(q => q + 1)}
+                className="w-9 h-9 rounded-full bg-[#1a1a1a] flex items-center justify-center"
+              >
+                <Plus className="w-4 h-4 text-white" />
+              </button>
+            </div>
+            <button
+              onClick={handleAdd}
+              className="flex-1 bg-[#1a1a1a] text-white text-[14px] font-barlow font-black uppercase py-3 rounded-xl"
+            >
+              Add · {fmtINR(lineTotal)}
+            </button>
           </div>
-          <button
-            onClick={() => { onAddToCart(item, qty, selectedVariant, selectedAddons, notes); onClose(); }}
-            className="flex-1 py-3 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 text-[#FFFFFF] text-[13px] font-semibold flex items-center justify-between px-4 transition-colors uppercase tracking-wider"
-          >
-            <span>Add to Cart</span>
-            <span className="font-mono">₹{(lineTotal * 83).toFixed(0)}</span>
-          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Main Flow Component ─────────────────────────────────────────────────────
+// ─── MenuCard ─────────────────────────────────────────────────────────────────
 
-export default function QROrderingFlow({ onExit, tableNumber = 4 }: { onExit: () => void; tableNumber?: number }) {
+function MenuCard({
+  item,
+  cartQty,
+  onView,
+  onQuickAdd,
+}: {
+  item: PublicMenuItem;
+  cartQty: number;
+  onView: () => void;
+  onQuickAdd: () => void;
+}) {
+  const hasOptions = item.variants.length > 0 || item.modifierGroups.length > 0;
+  const veg = isVeg(item);
+
+  return (
+    <div className="bg-white rounded-[18px] border border-[rgba(26,26,26,0.10)] overflow-hidden">
+      {item.imageUrl ? (
+        <div className="relative h-36">
+          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+          {isBestseller(item) && (
+            <span className="absolute top-2 left-2 flex items-center gap-1 text-[9px] font-mono bg-amber-500 text-white px-2 py-0.5 rounded-full">
+              <Star className="w-2.5 h-2.5 fill-white" /> BESTSELLER
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="h-20 bg-gradient-to-br from-[#E8447A]/10 to-[#E8447A]/5 flex items-center justify-center relative">
+          <span className="text-4xl font-black text-[#E8447A]/20">{item.name[0]}</span>
+          {isBestseller(item) && (
+            <span className="absolute top-2 left-2 flex items-center gap-1 text-[9px] font-mono bg-amber-500 text-white px-2 py-0.5 rounded-full">
+              <Star className="w-2.5 h-2.5 fill-white" /> BESTSELLER
+            </span>
+          )}
+        </div>
+      )}
+      <div className="p-3.5">
+        <div className="flex items-start gap-2 mb-1">
+          <div className={`mt-0.5 w-3.5 h-3.5 rounded-sm border-2 shrink-0 flex items-center justify-center
+            ${veg ? 'border-green-600' : 'border-red-600'}`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${veg ? 'bg-green-600' : 'bg-red-600'}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-barlow font-black uppercase text-[#1a1a1a] leading-tight truncate">{item.name}</p>
+            {item.description && (
+              <p className="text-[10px] text-[#1a1a1a]/40 mt-0.5 line-clamp-2">{item.description}</p>
+            )}
+          </div>
+          {isSpicy(item) && <Flame className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />}
+        </div>
+        <div className="flex items-center justify-between mt-2.5">
+          <div>
+            <p className="text-[15px] font-black font-mono text-[#1a1a1a]">{fmtINR(item.basePrice)}</p>
+            {item.prepTimeMinutes > 0 && (
+              <p className="text-[9px] text-[#1a1a1a]/40 flex items-center gap-1 mt-0.5">
+                <Clock className="w-2.5 h-2.5" /> {item.prepTimeMinutes} min
+              </p>
+            )}
+          </div>
+          {cartQty > 0 ? (
+            <button
+              onClick={hasOptions ? onView : onQuickAdd}
+              className="flex items-center gap-1 bg-[#E8447A] text-white text-[11px] font-mono px-3 py-1.5 rounded-full"
+            >
+              <Plus className="w-3 h-3" /> {cartQty} more
+            </button>
+          ) : (
+            <button
+              onClick={hasOptions ? onView : onQuickAdd}
+              className="w-8 h-8 rounded-full bg-[#1a1a1a] flex items-center justify-center"
+            >
+              <Plus className="w-4 h-4 text-white" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── StatusSteps ─────────────────────────────────────────────────────────────
+
+function StatusSteps({
+  steps,
+  currentStatus,
+  accentClass = 'bg-[#E8447A]',
+}: {
+  steps: { status: OrderStatus; label: string }[];
+  currentStatus: OrderStatus;
+  accentClass?: string;
+}) {
+  const idx = steps.findIndex(s => s.status === currentStatus);
+  return (
+    <div className="space-y-5">
+      {steps.map((s, i) => {
+        const done = idx > i;
+        const active = idx === i;
+        return (
+          <div key={s.status} className="flex items-center gap-4">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors
+              ${done ? 'bg-green-500' : active ? `${accentClass} animate-pulse` : 'bg-[#1a1a1a]/5'}`}>
+              {done ? (
+                <CheckCircle2 className="w-4 h-4 text-white" />
+              ) : active ? (
+                <div className="w-2.5 h-2.5 rounded-full bg-white" />
+              ) : (
+                <div className="w-2 h-2 rounded-full bg-[#1a1a1a]/20" />
+              )}
+            </div>
+            <p className={`text-[13px] font-medium transition-colors
+              ${done ? 'text-green-700' : active ? 'text-[#1a1a1a] font-bold' : 'text-[#1a1a1a]/30'}`}>
+              {s.label}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function QROrderingFlow({ onExit }: { onExit: () => void }) {
+  const [params] = useSearchParams();
+  const qrSlug = params.get('qr') ?? undefined;
+  const tableId = params.get('table') ?? undefined;
+  const tableNum = params.get('tableNum') ?? params.get('t') ?? undefined;
+  const tableLabel = tableNum ? `Table #${tableNum}` : tableId ? 'Your Table' : 'Dine In';
+
+  // ── Flow state ────────────────────────────────────────────────────────────────
   const [step, setStep] = useState<FlowStep>('entry');
   const [orderType, setOrderType] = useState<OrderType>('dine-in');
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [filterVeg, setFilterVeg] = useState(false);
   const [cart, setCart] = useState<CartEntry[]>([]);
-  const [viewItem, setViewItem] = useState<QRMenuItem | null>(null);
+  const [viewItem, setViewItem] = useState<{ item: PublicMenuItem; categoryName: string } | null>(null);
   const [couponInput, setCouponInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; pct: number } | null>(null);
-  const [couponError, setCouponError] = useState('');
+  const [couponCode, setCouponCode] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [payMethod, setPayMethod] = useState<'upi' | 'cash' | 'card'>('upi');
-  const [pickupSlot, setPickupSlot] = useState(PICKUP_SLOTS[0]);
-  const [trackingStep, setTrackingStep] = useState<TrackingStatus>('placed');
-  const [tokenNumber] = useState(Math.floor(Math.random() * 20) + 100);
-  const [showSearch, setShowSearch] = useState(false);
+  const [pickupSlot, setPickupSlot] = useState<string>(PICKUP_SLOTS[0]);
+  const [placedOrder, setPlacedOrder] = useState<GuestOrderDto | null>(null);
+  const [guestToken, setGuestToken] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [currentStatus, setCurrentStatus] = useState<OrderStatus>('placed');
+  const [manualTableNum, setManualTableNum] = useState('');
 
-  const tableLabel = `Table ${tableNumber}`;
+  const qc = useQueryClient();
 
-  const filteredMenu = useMemo(() => {
-    let items = QR_MENU;
-    if (category !== 'All') items = items.filter(i => i.category === category);
-    if (filterVeg) items = items.filter(i => i.isVeg);
-    if (search) {
+  // ── Backend hooks ─────────────────────────────────────────────────────────────
+  const channel = orderType === 'dine-in' ? 'dine_in' : 'window';
+  const menuQuery = usePublicMenu({ channel });
+  const placeDineIn = usePlaceDineInOrder();
+  const placeWindow = usePlaceWindowOrder(guestToken);
+  const requestOtp = useRequestGuestOtp();
+  const verifyOtp = useVerifyGuestOtp();
+  const orderQuery = useGuestOrder(placedOrder?.id ?? null);
+
+  // Sync polling → local status
+  useEffect(() => {
+    if (orderQuery.data?.status) setCurrentStatus(orderQuery.data.status);
+  }, [orderQuery.data?.status]);
+
+  // Real-time socket status updates
+  useSocket(
+    '/guest',
+    {
+      'order:status_changed': (data: unknown) => {
+        const d = data as { orderId: string; status: OrderStatus };
+        if (d.orderId === placedOrder?.id) {
+          setCurrentStatus(d.status);
+          qc.invalidateQueries({ queryKey: ['guest-order', placedOrder?.id] });
+        }
+      },
+    },
+    { query: placedOrder ? { orderId: placedOrder.id } : {}, enabled: Boolean(placedOrder) },
+  );
+
+  // ── Derived menu data ──────────────────────────────────────────────────────────
+  const categories = useMemo(() => {
+    if (!menuQuery.data) return ['All'];
+    return ['All', ...menuQuery.data.categories.map((c: PublicCategory) => c.name)];
+  }, [menuQuery.data]);
+
+  const allItems = useMemo(() => {
+    if (!menuQuery.data) return [];
+    return menuQuery.data.categories.flatMap((c: PublicCategory) =>
+      c.items.map(item => ({ item, categoryName: c.name })),
+    );
+  }, [menuQuery.data]);
+
+  const filteredItems = useMemo(() => {
+    let items = allItems;
+    if (category !== 'All') items = items.filter(({ categoryName }) => categoryName === category);
+    if (filterVeg) items = items.filter(({ item }) => isVeg(item));
+    if (search.trim()) {
       const q = search.toLowerCase();
-      items = items.filter(i => i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
+      items = items.filter(({ item }) =>
+        item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q),
+      );
     }
     return items;
-  }, [category, filterVeg, search]);
+  }, [allItems, category, filterVeg, search]);
 
-  const cartTotal = cart.reduce((s, e) => s + e.lineTotal, 0);
+  // ── Cart ───────────────────────────────────────────────────────────────────────
+  const cartSubtotal = cart.reduce((s, e) => s + e.lineTotal, 0);
   const cartCount = cart.reduce((s, e) => s + e.qty, 0);
-  const discountAmt = appliedCoupon ? cartTotal * (appliedCoupon.pct / 100) : 0;
-  const taxAmt = (cartTotal - discountAmt) * 0.05;
-  const grandTotal = cartTotal - discountAmt + taxAmt;
+  const estimatedTax = Math.round(cartSubtotal * 0.05);
+  const estimatedTotal = cartSubtotal + estimatedTax;
 
-  const addToCart = (item: QRMenuItem, qty: number, variant?: Variant, addons: Addon[] = [], notes = '') => {
-    const basePrice = variant?.price ?? item.price;
-    const addonTotal = addons.reduce((s, a) => s + a.price, 0);
-    const lineTotal = (basePrice + addonTotal) * qty;
+  function addToCart(entry: CartEntry) {
+    const key = cartKey(entry);
     setCart(prev => {
-      const key = `${item.id}-${variant?.name ?? ''}-${addons.map(a => a.name).join(',')}`;
-      const existing = prev.find(e => `${e.item.id}-${e.variant?.name ?? ''}-${e.addons.map(a => a.name).join(',')}` === key);
-      if (existing && notes === existing.notes) {
-        return prev.map(e => {
-          const eKey = `${e.item.id}-${e.variant?.name ?? ''}-${e.addons.map(a => a.name).join(',')}`;
-          if (eKey !== key) return e;
-          return { ...e, qty: e.qty + qty, lineTotal: e.lineTotal + lineTotal };
-        });
+      const idx = prev.findIndex(e => cartKey(e) === key);
+      if (idx >= 0) {
+        return prev.map((e, i) =>
+          i !== idx ? e : { ...e, qty: e.qty + entry.qty, lineTotal: e.lineTotal + entry.lineTotal },
+        );
       }
-      return [...prev, { item, qty, variant, addons, notes, lineTotal }];
+      return [...prev, entry];
     });
-  };
+    toast.success(`${entry.item.name} added`);
+  }
 
-  const updateCartQty = (idx: number, delta: number) => {
+  function quickAdd(item: PublicMenuItem, categoryName: string) {
+    addToCart({ item, categoryName, qty: 1, selectedModifiers: [], notes: '', lineTotal: item.basePrice });
+  }
+
+  function adjustQty(index: number, delta: number) {
     setCart(prev => {
-      const entry = prev[idx];
-      if (!entry) return prev;
-      const newQty = entry.qty + delta;
-      if (newQty <= 0) return prev.filter((_, i) => i !== idx);
-      const perUnit = entry.lineTotal / entry.qty;
-      return prev.map((e, i) => i === idx ? { ...e, qty: newQty, lineTotal: perUnit * newQty } : e);
+      const e = prev[index];
+      if (!e) return prev;
+      const newQty = e.qty + delta;
+      if (newQty <= 0) return prev.filter((_, i) => i !== index);
+      const perUnit = e.lineTotal / e.qty;
+      return prev.map((en, i) => i !== index ? en : { ...en, qty: newQty, lineTotal: perUnit * newQty });
     });
-  };
+  }
 
-  const applyCoupon = () => {
-    const code = couponInput.trim().toUpperCase();
-    if (COUPON_MAP[code]) {
-      setAppliedCoupon({ code, pct: COUPON_MAP[code] });
-      setCouponError('');
-      setCouponInput('');
+  // ── Order placement ────────────────────────────────────────────────────────────
+  function buildItems() {
+    return cart.map(e => ({
+      itemId: e.item.id,
+      qty: e.qty,
+      variantId: e.variant?.id,
+      notes: e.notes || undefined,
+      modifiers: e.selectedModifiers.map(({ group, modifier }) => ({
+        groupId: group.id,
+        modifierId: modifier.id,
+      })),
+    }));
+  }
+
+  async function handleCheckoutSubmit() {
+    if (!customerName.trim()) { toast.error('Please enter your name'); return; }
+
+    if (orderType === 'dine-in') {
+      try {
+        const notesParts = [
+          manualTableNum.trim() ? `Table: ${manualTableNum.trim()}` : '',
+          payMethod !== 'upi' ? `Preferred payment: ${payMethod}` : '',
+        ].filter(Boolean);
+        const order = await placeDineIn.mutateAsync({
+          qrSlug, tableId,
+          guestName: customerName.trim(),
+          guestPhone: customerPhone.trim() || undefined,
+          guestNotes: notesParts.length ? notesParts.join(' · ') : undefined,
+          items: buildItems(),
+          couponCode: couponCode || undefined,
+        });
+        saveLastOrder(order);
+        setPlacedOrder(order);
+        setCurrentStatus(order.status);
+        setStep('order-placed');
+      } catch { /* handled by hook */ }
     } else {
-      setCouponError('Invalid coupon code');
+      if (!customerPhone.trim() || customerPhone.length < 10) {
+        toast.error('Valid 10-digit phone number required for takeaway');
+        return;
+      }
+      try {
+        await requestOtp.mutateAsync(customerPhone.trim());
+        setStep('otp-verify');
+      } catch { /* handled by hook */ }
     }
-  };
+  }
 
-  const placeOrder = () => {
-    if (orderType === 'takeaway') {
+  async function handleVerifyOtp() {
+    if (otpCode.length < 4) { toast.error('Enter the complete OTP'); return; }
+    try {
+      const result = await verifyOtp.mutateAsync({ phone: customerPhone.trim(), code: otpCode });
+      setGuestToken(result.guestToken);
       setStep('pickup-time');
-    } else {
-      setStep('order-placed');
-      setTrackingStep('placed');
-      // Auto-advance tracking for demo
-      const steps: TrackingStatus[] = ['accepted', 'preparing', 'ready'];
-      steps.forEach((s, i) => {
-        setTimeout(() => setTrackingStep(s), (i + 1) * 4000);
+    } catch { /* handled by hook */ }
+  }
+
+  async function handleConfirmPickup() {
+    try {
+      const order = await placeWindow.mutateAsync({
+        qrSlug,
+        guestName: customerName.trim(),
+        guestNotes: payMethod !== 'upi' ? `Preferred payment: ${payMethod}` : undefined,
+        pickupAt: slotToISO(pickupSlot),
+        items: buildItems(),
+        couponCode: couponCode || undefined,
       });
-    }
-  };
+      saveLastOrder(order);
+      setPlacedOrder(order);
+      setCurrentStatus(order.status);
+      setStep('token');
+    } catch { /* handled by hook */ }
+  }
 
-  const confirmPickup = () => {
-    setStep('token');
-    setTrackingStep('preparing');
-    setTimeout(() => setTrackingStep('ready'), 6000);
-  };
+  // Post-order totals from backend response
+  const realDiscount = placedOrder?.totals.discount ?? 0;
+  const realTax = placedOrder?.totals.tax ?? estimatedTax;
+  const realGrand = placedOrder?.totals.grand ?? estimatedTotal;
 
-  // ─── Entry Screen ──────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // STEP RENDERS
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  // ── entry ─────────────────────────────────────────────────────────────────────
   if (step === 'entry') {
     return (
-      <div className="min-h-screen bg-[#FFFFFF] flex flex-col items-center justify-center p-6 font-sans">
-        <button onClick={onExit} className="fixed top-4 left-4 flex items-center gap-1.5 text-[10px] font-mono text-[#1a1a1a]/40 hover:text-[#1a1a1a] uppercase tracking-widest">
-          <ArrowLeft className="w-3 h-3" />
-          Exit
-        </button>
-        <div className="max-w-sm w-full space-y-8 text-center">
-          <div>
-            <div className="w-16 h-16 rounded-2xl bg-[#1a1a1a] flex items-center justify-center mx-auto mb-4 shadow-lg">
+      <div className="min-h-screen bg-[#0F0F10] font-sans flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[#E8447A]/8 blur-3xl" />
+        </div>
+        <div className="relative max-w-sm w-full space-y-10">
+          <div className="space-y-3">
+            <div className="w-16 h-16 rounded-3xl bg-[#E8447A]/20 flex items-center justify-center mx-auto border border-[#E8447A]/30">
               <QrCode className="w-8 h-8 text-[#E8447A]" />
             </div>
-            <h1 className="text-[28px] font-barlow font-black uppercase text-[#1a1a1a] tracking-wide">SMARTDINE</h1>
-            <p className="text-[13px] text-[#1a1a1a]/50 mt-1.5">Welcome to your digital menu experience</p>
+            <div>
+              <h1 className="text-[28px] font-barlow font-black uppercase text-white tracking-tight">SmartDine</h1>
+              <p className="text-[13px] text-white/40 mt-1">Quick &amp; Easy Ordering</p>
+            </div>
           </div>
 
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-5 shadow-sm">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <MapPin className="w-4 h-4 text-[#E8447A]" />
-              <span className="text-[14px] font-semibold text-[#1a1a1a]">{tableLabel} · Rose Alcove</span>
+          {(tableId || tableNum) && (
+            <div className="inline-flex items-center gap-2 border border-[#E8447A]/30 text-[#E8447A] text-[13px] font-mono px-4 py-2 rounded-full mx-auto">
+              <Hash className="w-3.5 h-3.5" />
+              {tableLabel}
             </div>
-            <p className="text-[11px] text-[#1a1a1a]/40 font-mono uppercase tracking-widest">Scan verified · Zone: Main Floor</p>
-          </div>
+          )}
 
           <div className="space-y-3">
-            <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest">How would you like to order?</p>
-            <button
-              onClick={() => { setOrderType('dine-in'); setStep('menu'); }}
-              className="w-full py-4 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 text-[#FFFFFF] uppercase tracking-wider transition-all flex items-center justify-between px-5 group"
-            >
-              <div className="flex items-center gap-3">
-                <UtensilsCrossed className="w-5 h-5" />
-                <div className="text-left">
-                  <p className="text-[14px] font-semibold">Dine In</p>
-                  <p className="text-[11px] opacity-60">Order at your table</p>
+            <p className="text-[11px] font-mono text-white/30 uppercase tracking-widest">
+              How would you like to order?
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { setOrderType('dine-in'); setStep('menu'); }}
+                className="flex flex-col items-center gap-3 p-5 rounded-2xl border border-neutral-800 hover:border-[#E8447A]/50 bg-neutral-900/50 hover:bg-[#E8447A]/5 transition-all group"
+              >
+                <UtensilsCrossed className="w-6 h-6 text-white/40 group-hover:text-[#E8447A] transition-colors" />
+                <div>
+                  <p className="text-[13px] font-barlow font-black uppercase text-white">Dine In</p>
+                  <p className="text-[10px] text-white/30 mt-0.5">Served at your table</p>
                 </div>
-              </div>
-              <ChevronRight className="w-5 h-5 opacity-60 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-            <button
-              onClick={() => { setOrderType('takeaway'); setStep('menu'); }}
-              className="w-full py-4 rounded-[100px] border-2 border-[rgba(26,26,26,0.18)] bg-white hover:bg-[#E8447A]/10 hover:border-[#E8447A] text-[#1a1a1a] transition-all flex items-center justify-between px-5 group"
-            >
-              <div className="flex items-center gap-3">
-                <ShoppingBag className="w-5 h-5" />
-                <div className="text-left">
-                  <p className="text-[14px] font-semibold">Takeaway</p>
-                  <p className="text-[11px] text-[#1a1a1a]/50">Pick up from counter</p>
+              </button>
+              <button
+                onClick={() => { setOrderType('takeaway'); setStep('menu'); }}
+                className="flex flex-col items-center gap-3 p-5 rounded-2xl border border-neutral-800 hover:border-[#E8447A]/50 bg-neutral-900/50 hover:bg-[#E8447A]/5 transition-all group"
+              >
+                <ShoppingBag className="w-6 h-6 text-white/40 group-hover:text-[#E8447A] transition-colors" />
+                <div>
+                  <p className="text-[13px] font-barlow font-black uppercase text-white">Takeaway</p>
+                  <p className="text-[10px] text-white/30 mt-0.5">Pick up at counter</p>
                 </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-[#1a1a1a]/40 group-hover:translate-x-0.5 transition-transform" />
-            </button>
+              </button>
+            </div>
           </div>
-
-          <p className="text-[10px] text-[#1a1a1a]/25 font-mono">842 Pastel Blvd, Los Angeles · smartdine.com</p>
         </div>
       </div>
     );
   }
 
-  // ─── Menu Screen ───────────────────────────────────────────────────────────
+  // ── menu ──────────────────────────────────────────────────────────────────────
   if (step === 'menu') {
-    return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col">
-        {/* Header */}
-        <div className="sticky top-0 z-20 bg-[#1a1a1a] border-b border-[rgba(240,234,210,0.10)]">
-          <div className="px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setStep('entry')} className="text-[#FFFFFF]/50 hover:text-[#FFFFFF]">
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <p className="text-[13px] font-barlow font-black uppercase text-[#FFFFFF]">Menu</p>
-                <p className="text-[10px] text-[#FFFFFF]/40 font-mono uppercase">
-                  {orderType === 'dine-in' ? `${tableLabel} · Dine In` : 'Takeaway Order'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowSearch(!showSearch)} className="w-8 h-8 rounded-full border border-[rgba(240,234,210,0.15)] flex items-center justify-center">
-                <Search className="w-3.5 h-3.5 text-[#FFFFFF]/50" />
-              </button>
-              <button
-                onClick={() => setFilterVeg(!filterVeg)}
-                className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all ${filterVeg ? 'border-[#1BC8C8] bg-[#1BC8C8]/20' : 'border-[rgba(240,234,210,0.15)]'}`}
-              >
-                <Leaf className={`w-3.5 h-3.5 ${filterVeg ? 'text-[#1BC8C8]' : 'text-[#FFFFFF]/40'}`} />
-              </button>
-              {cartCount > 0 && (
-                <button
-                  onClick={() => setStep('cart')}
-                  className="relative flex items-center gap-1.5 bg-[#E8447A] text-[#1a1a1a] px-3 py-1.5 rounded-full text-[12px] font-medium"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5" />
-                  <span>{cartCount}</span>
-                  <span className="hidden sm:inline font-mono">₹{(cartTotal * 83).toFixed(0)}</span>
-                </button>
-              )}
-            </div>
+    if (menuQuery.isLoading) {
+      return (
+        <div className="min-h-screen bg-[#F7F7F7] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-8 h-8 animate-spin text-[#E8447A] mx-auto" />
+            <p className="text-[13px] text-[#1a1a1a]/50">Loading menu…</p>
           </div>
-          {showSearch && (
-            <div className="px-4 pb-3">
-              <div className="flex items-center gap-2 bg-[rgba(240,234,210,0.08)] border border-[rgba(240,234,210,0.15)] rounded-xl px-3 py-2">
-                <Search className="w-4 h-4 text-[#FFFFFF]/40 shrink-0" />
-                <input
-                  autoFocus
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Search dishes..."
-                  className="flex-1 bg-transparent outline-none text-[13px] text-[#FFFFFF] placeholder:text-[#FFFFFF]/30"
-                />
-                {search && <button onClick={() => setSearch('')}><X className="w-4 h-4 text-[#FFFFFF]/40" /></button>}
-              </div>
+        </div>
+      );
+    }
+    if (menuQuery.isError || !menuQuery.data) {
+      return (
+        <div className="min-h-screen bg-[#F7F7F7] flex items-center justify-center p-6">
+          <div className="text-center space-y-4 max-w-xs">
+            <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
+            <p className="text-[14px] text-[#1a1a1a]/70">Failed to load menu. Please try again.</p>
+            <button
+              onClick={() => menuQuery.refetch()}
+              className="px-5 py-2.5 bg-[#1a1a1a] text-white text-[13px] font-barlow font-black uppercase rounded-xl"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-[#F7F7F7] font-sans flex flex-col">
+        {/* Header */}
+        <div className="sticky top-0 z-30 bg-white border-b border-[rgba(26,26,26,0.08)] px-4 pt-3 pb-2">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <button onClick={() => setStep('entry')} className="text-[#1a1a1a]/50">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex-1">
+              <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest">
+                {orderType === 'dine-in' ? `Dine In · ${tableLabel}` : 'Takeaway'}
+              </p>
+              <p className="text-[14px] font-barlow font-black uppercase text-[#1a1a1a]">Menu</p>
             </div>
-          )}
-          {/* Category Tabs */}
-          <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-none">
-            {CATEGORIES.map(cat => (
+            <button
+              onClick={() => setFilterVeg(v => !v)}
+              className={`p-2 rounded-lg border transition-all ${filterVeg ? 'border-green-600 bg-green-50' : 'border-[rgba(26,26,26,0.18)]'}`}
+            >
+              <Leaf className={`w-4 h-4 ${filterVeg ? 'text-green-600' : 'text-[#1a1a1a]/40'}`} />
+            </button>
+          </div>
+          {/* Search */}
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1a1a1a]/30" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search dishes…"
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[#F7F7F7] border border-[rgba(26,26,26,0.10)] text-[13px] text-[#1a1a1a] placeholder-[#1a1a1a]/30 focus:outline-none"
+            />
+          </div>
+          {/* Category pills */}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {categories.map(cat => (
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
-                className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all
-                  ${category === cat ? 'bg-[#E8447A] text-[#1a1a1a]' : 'bg-[rgba(240,234,210,0.10)] text-[#FFFFFF]/60 hover:bg-[rgba(240,234,210,0.15)]'}`}
+                className={`shrink-0 text-[11px] font-mono px-3 py-1.5 rounded-full border transition-all
+                  ${category === cat
+                    ? 'border-[#1a1a1a] bg-[#1a1a1a] text-white'
+                    : 'border-[rgba(26,26,26,0.18)] text-[#1a1a1a]/60 hover:border-[#1a1a1a]/50'}`}
               >
                 {cat}
               </button>
@@ -560,310 +800,416 @@ export default function QROrderingFlow({ onExit, tableNumber = 4 }: { onExit: ()
           </div>
         </div>
 
-        {/* Items Grid */}
+        {/* Grid */}
         <div className="flex-1 p-4">
-          {filteredMenu.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <UtensilsCrossed className="w-10 h-10 text-[#1a1a1a]/20 mb-3" />
-              <p className="text-[13px] font-medium text-[#1a1a1a]/50">No items found</p>
-              <button onClick={() => { setCategory('All'); setSearch(''); setFilterVeg(false); }} className="text-[12px] text-[#1a1a1a] underline mt-2">Clear filters</button>
+          {filteredItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48">
+              <p className="text-[13px] text-[#1a1a1a]/40">No items found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {filteredMenu.map(item => (
-                <MenuCard
-                  key={item.id}
-                  item={item}
-                  onView={setViewItem}
-                  onQuickAdd={item => addToCart(item, 1)}
-                />
-              ))}
+            <div className="grid grid-cols-2 gap-3">
+              {filteredItems.map(({ item, categoryName }) => {
+                const qty = cart.filter(e => e.item.id === item.id).reduce((s, e) => s + e.qty, 0);
+                return (
+                  <MenuCard
+                    key={item.id}
+                    item={item}
+                    cartQty={qty}
+                    onView={() => setViewItem({ item, categoryName })}
+                    onQuickAdd={() => quickAdd(item, categoryName)}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Bottom Cart Bar */}
+        {/* Cart FAB */}
         {cartCount > 0 && (
-          <div className="sticky bottom-0 bg-[#FFFFFF] border-t border-[rgba(26,26,26,0.10)] p-4">
+          <div className="sticky bottom-0 p-4 bg-gradient-to-t from-[#F7F7F7] pt-8">
             <button
               onClick={() => setStep('cart')}
-              className="w-full py-3.5 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 text-[#FFFFFF] flex items-center justify-between px-5 transition-colors uppercase tracking-wider"
+              className="w-full bg-[#1a1a1a] text-white py-4 rounded-2xl flex items-center justify-between px-5"
             >
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-white/15 text-[12px] font-bold flex items-center justify-center">{cartCount}</span>
-                <span className="text-[14px] font-semibold">View Cart</span>
+              <div className="flex items-center gap-2.5">
+                <span className="w-6 h-6 rounded-full bg-[#E8447A] text-white text-[11px] font-black flex items-center justify-center">
+                  {cartCount}
+                </span>
+                <span className="text-[13px] font-barlow font-black uppercase">View Cart</span>
               </div>
-              <span className="text-[14px] font-mono font-bold">₹{(cartTotal * 83).toFixed(0)}</span>
+              <span className="text-[13px] font-mono font-black">{fmtINR(cartSubtotal)}</span>
             </button>
           </div>
         )}
 
+        {/* Item detail modal */}
         {viewItem && (
           <ItemDetailModal
-            item={viewItem}
+            item={viewItem.item}
+            categoryName={viewItem.categoryName}
             onClose={() => setViewItem(null)}
-            onAddToCart={addToCart}
+            onAdd={entry => { addToCart(entry); setViewItem(null); }}
           />
         )}
       </div>
     );
   }
 
-  // ─── Cart Screen ───────────────────────────────────────────────────────────
+  // ── cart ──────────────────────────────────────────────────────────────────────
   if (step === 'cart') {
     return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col">
-        <div className="sticky top-0 z-20 bg-[#1a1a1a] border-b border-[rgba(240,234,210,0.10)] px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setStep('menu')} className="text-[#FFFFFF]/50 hover:text-[#FFFFFF]">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <p className="text-[14px] font-barlow font-black uppercase text-[#FFFFFF]">Your Cart</p>
-            <p className="text-[10px] text-[#FFFFFF]/40 font-mono uppercase">{cartCount} item{cartCount !== 1 ? 's' : ''}</p>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-36">
-          {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <ShoppingBag className="w-12 h-12 text-[#1a1a1a]/15 mb-4" />
-              <p className="text-[14px] font-medium text-[#1a1a1a]/50">Your cart is empty</p>
-              <button onClick={() => setStep('menu')} className="mt-3 text-[12px] text-[#1a1a1a] underline font-medium">Browse Menu</button>
-            </div>
-          ) : (
-            <>
-              <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] divide-y divide-[rgba(26,26,26,0.05)] overflow-hidden">
-                {cart.map((entry, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3">
-                    <img src={entry.item.image} alt={entry.item.name} className="w-14 h-14 rounded-xl object-cover shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-medium text-[#1a1a1a] leading-snug">{entry.item.name}</p>
-                      {entry.variant && <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">{entry.variant.name}</p>}
-                      {entry.addons.length > 0 && (
-                        <p className="text-[10px] text-[#1a1a1a]/40 mt-0.5">{entry.addons.map(a => a.name).join(', ')}</p>
-                      )}
-                      {entry.notes && <p className="text-[10px] text-amber-600 italic mt-0.5">↳ {entry.notes}</p>}
-                      <p className="text-[12px] font-mono font-bold text-[#1a1a1a] mt-1">₹{(entry.lineTotal * 83).toFixed(0)}</p>
-                    </div>
-                    <div className="flex items-center gap-2 border border-[rgba(26,26,26,0.15)] rounded-xl px-2 py-1 shrink-0">
-                      <button onClick={() => updateCartQty(idx, -1)} className="text-[#1a1a1a]/40 hover:text-[#1a1a1a]"><Minus className="w-3.5 h-3.5" /></button>
-                      <span className="text-[12px] font-mono font-bold w-4 text-center text-[#1a1a1a]">{entry.qty}</span>
-                      <button onClick={() => updateCartQty(idx, +1)} className="text-[#1a1a1a]/40 hover:text-[#1a1a1a]"><Plus className="w-3.5 h-3.5" /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Coupon */}
-              <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Tag className="w-4 h-4 text-[#1a1a1a]/40" />
-                  <p className="text-[13px] font-medium text-[#1a1a1a]">Coupon Code</p>
-                </div>
-                {appliedCoupon ? (
-                  <div className="flex items-center justify-between bg-[#1BC8C8]/10 border border-[#1BC8C8]/30 rounded-xl px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <BadgeCheck className="w-4 h-4 text-[#1BC8C8]" />
-                      <span className="text-[12px] font-mono font-bold text-[#1BC8C8]">{appliedCoupon.code}</span>
-                      <span className="text-[11px] text-[#1BC8C8]">−{appliedCoupon.pct}%</span>
-                    </div>
-                    <button onClick={() => setAppliedCoupon(null)}><X className="w-3.5 h-3.5 text-[#1BC8C8]" /></button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={couponInput}
-                      onChange={e => { setCouponInput(e.target.value.toUpperCase()); setCouponError(''); }}
-                      onKeyDown={e => e.key === 'Enter' && applyCoupon()}
-                      placeholder="Enter code"
-                      className="flex-1 border border-[rgba(26,26,26,0.18)] rounded-xl px-3 py-2 text-[12px] font-mono uppercase outline-none focus:border-[#E8447A] focus:ring-2 focus:ring-[#E8447A]/20"
-                    />
-                    <button onClick={applyCoupon} className="px-4 py-2 bg-[#1a1a1a] text-[#FFFFFF] rounded-xl text-[12px] font-medium hover:bg-[#1a1a1a]/80">Apply</button>
-                  </div>
-                )}
-                {couponError && <p className="text-[11px] text-red-500 mt-1.5">{couponError}</p>}
-                <p className="text-[10px] text-[#1a1a1a]/40 mt-2 font-mono">Try: FIRST10 · SMART5 · QR15</p>
-              </div>
-
-              {/* Order Summary */}
-              <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4 space-y-2">
-                <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a] mb-3">Order Summary</p>
-                <SummaryRow label="Subtotal" value={`₹${(cartTotal * 83).toFixed(0)}`} />
-                {appliedCoupon && (
-                  <SummaryRow label={`Coupon (${appliedCoupon.code} −${appliedCoupon.pct}%)`} value={`− ₹${(discountAmt * 83).toFixed(0)}`} accent="text-[#1BC8C8]" />
-                )}
-                <SummaryRow label="GST (5%)" value={`₹${(taxAmt * 83).toFixed(0)}`} accent="text-[#1a1a1a]/40" />
-                <div className="flex justify-between items-center border-t border-[rgba(26,26,26,0.08)] pt-2 mt-1">
-                  <span className="text-[14px] font-bold text-[#1a1a1a]">Grand Total</span>
-                  <span className="text-[16px] font-bold font-mono text-[#1a1a1a]">₹{(grandTotal * 83).toFixed(0)}</span>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {cart.length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 bg-[#FFFFFF] border-t border-[rgba(26,26,26,0.10)] p-4">
-            <button
-              onClick={() => setStep('checkout')}
-              className="w-full py-3.5 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 text-[#FFFFFF] flex items-center justify-between px-5 transition-colors uppercase tracking-wider"
-            >
-              <span className="text-[14px] font-semibold">Proceed to Checkout</span>
-              <span className="text-[14px] font-mono font-bold">₹{(grandTotal * 83).toFixed(0)}</span>
+      <div className="min-h-screen bg-[#F7F7F7] font-sans flex flex-col">
+        <div className="sticky top-0 z-10 bg-white border-b border-[rgba(26,26,26,0.08)] px-4 py-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setStep('menu')} className="text-[#1a1a1a]/50">
+              <ArrowLeft className="w-5 h-5" />
             </button>
+            <div>
+              <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest">Your order</p>
+              <p className="text-[16px] font-barlow font-black uppercase text-[#1a1a1a]">Cart</p>
+            </div>
           </div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── Checkout Screen ───────────────────────────────────────────────────────
-  if (step === 'checkout') {
-    const canPlace = customerName.trim().length >= 2 && customerPhone.trim().length >= 10;
-    return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col">
-        <div className="sticky top-0 z-20 bg-[#1a1a1a] border-b border-[rgba(240,234,210,0.10)] px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setStep('cart')} className="text-[#FFFFFF]/50 hover:text-[#FFFFFF]">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <p className="text-[14px] font-barlow font-black uppercase text-[#FFFFFF]">Checkout</p>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-36">
-          {/* Customer Details */}
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4 space-y-3">
-            <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a]">Your Details</p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 border border-[rgba(26,26,26,0.18)] rounded-xl px-3 py-2.5 focus-within:border-[#E8447A] focus-within:ring-2 focus-within:ring-[#E8447A]/20 transition-all">
-                <User className="w-4 h-4 text-[#1a1a1a]/40 shrink-0" />
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={e => setCustomerName(e.target.value)}
-                  placeholder="Your name"
-                  className="flex-1 outline-none text-[13px] text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 bg-transparent"
-                />
-              </div>
-              <div className="flex items-center gap-2 border border-[rgba(26,26,26,0.18)] rounded-xl px-3 py-2.5 focus-within:border-[#E8447A] focus-within:ring-2 focus-within:ring-[#E8447A]/20 transition-all">
-                <Phone className="w-4 h-4 text-[#1a1a1a]/40 shrink-0" />
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={e => setCustomerPhone(e.target.value)}
-                  placeholder="Mobile number"
-                  className="flex-1 outline-none text-[13px] text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 bg-transparent"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Order Info */}
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a]">Order Info</p>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${orderType === 'dine-in' ? 'bg-[#1BC8C8]/10 text-[#1BC8C8] border-[#1BC8C8]/30' : 'bg-[#E8447A]/15 text-[#1a1a1a] border-[#E8447A]/30'}`}>
-                {orderType === 'dine-in' ? `Dine In · ${tableLabel}` : 'Takeaway'}
-              </span>
-            </div>
+        <div className="flex-1 p-4 space-y-3">
+          {/* Items */}
+          <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] divide-y divide-[rgba(26,26,26,0.06)]">
             {cart.map((entry, i) => (
-              <div key={i} className="flex justify-between text-[12px] py-1">
-                <span className="text-[#1a1a1a]/60">{entry.qty}× {entry.item.name}{entry.variant ? ` (${entry.variant.name})` : ''}</span>
-                <span className="font-mono text-[#1a1a1a]">₹{(entry.lineTotal * 83).toFixed(0)}</span>
+              <div key={i} className="p-4 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-barlow font-black uppercase text-[#1a1a1a] truncate">
+                    {entry.item.name}
+                  </p>
+                  {entry.variant && (
+                    <p className="text-[11px] text-[#1a1a1a]/40">{entry.variant.name}</p>
+                  )}
+                  {entry.selectedModifiers.length > 0 && (
+                    <p className="text-[10px] text-[#1a1a1a]/30">
+                      {entry.selectedModifiers.map(m => m.modifier.name).join(', ')}
+                    </p>
+                  )}
+                  {entry.notes && (
+                    <p className="text-[10px] text-[#1a1a1a]/30 italic">{entry.notes}</p>
+                  )}
+                  <p className="text-[12px] font-mono font-black text-[#1a1a1a] mt-1">
+                    {fmtINR(entry.lineTotal)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => adjustQty(i, -1)}
+                    className="w-7 h-7 rounded-full bg-[#1a1a1a]/5 flex items-center justify-center"
+                  >
+                    <Minus className="w-3.5 h-3.5 text-[#1a1a1a]" />
+                  </button>
+                  <span className="text-[14px] font-black font-mono text-[#1a1a1a] w-5 text-center">
+                    {entry.qty}
+                  </span>
+                  <button
+                    onClick={() => adjustQty(i, 1)}
+                    className="w-7 h-7 rounded-full bg-[#1a1a1a] flex items-center justify-center"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-white" />
+                  </button>
+                </div>
               </div>
             ))}
-            <div className="border-t border-[rgba(26,26,26,0.08)] pt-2 mt-2 flex justify-between items-center">
-              <span className="text-[13px] font-bold text-[#1a1a1a]">Total</span>
-              <span className="text-[14px] font-bold font-mono text-[#1a1a1a]">₹{(grandTotal * 83).toFixed(0)}</span>
-            </div>
           </div>
 
-          {/* Payment Method */}
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4">
-            <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a] mb-3">Payment Method</p>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { id: 'upi',  icon: Smartphone, label: 'UPI' },
-                { id: 'cash', icon: Banknote,   label: 'Cash' },
-                { id: 'card', icon: CreditCard, label: 'Card' },
-              ] as { id: 'upi' | 'cash' | 'card'; icon: React.ElementType; label: string }[]).map(m => {
-                const Icon = m.icon;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => setPayMethod(m.id)}
-                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all
-                      ${payMethod === m.id ? 'border-[#E8447A] bg-[#E8447A]/10 text-[#1a1a1a]' : 'border-[rgba(26,26,26,0.15)] text-[#1a1a1a]/50'}`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-[10px] font-mono uppercase">{m.label}</span>
-                  </button>
-                );
-              })}
+          {/* Coupon */}
+          <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-4">
+            <p className="text-[11px] font-barlow font-black uppercase text-[#1a1a1a] mb-2 flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5" /> Coupon Code
+            </p>
+            {couponCode ? (
+              <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  <span className="text-[13px] font-mono font-black text-green-700">{couponCode}</span>
+                  <span className="text-[11px] text-green-600">applied at checkout</span>
+                </div>
+                <button onClick={() => { setCouponCode(''); setCouponInput(''); }} className="text-green-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  value={couponInput}
+                  onChange={e => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Enter coupon code"
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-[rgba(26,26,26,0.18)] text-[13px] font-mono text-[#1a1a1a] placeholder-[#1a1a1a]/30 focus:outline-none uppercase"
+                />
+                <button
+                  onClick={() => {
+                    if (couponInput.trim()) {
+                      setCouponCode(couponInput.trim());
+                      setCouponInput('');
+                      toast.success('Coupon will be applied at checkout');
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-[#1a1a1a] text-white text-[13px] font-barlow font-black uppercase rounded-xl"
+                >
+                  Apply
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Summary */}
+          <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-4 space-y-2.5">
+            <p className="text-[11px] font-barlow font-black uppercase text-[#1a1a1a]">Order Summary</p>
+            <div className="flex justify-between text-[12px]">
+              <span className="text-[#1a1a1a]/50">Subtotal</span>
+              <span className="font-mono text-[#1a1a1a]">{fmtINR(cartSubtotal)}</span>
             </div>
+            {couponCode && (
+              <div className="flex justify-between text-[12px]">
+                <span className="text-green-600">Coupon ({couponCode})</span>
+                <span className="font-mono text-green-600">Applied ✓</span>
+              </div>
+            )}
+            <div className="flex justify-between text-[12px]">
+              <span className="text-[#1a1a1a]/50">GST (~5%)</span>
+              <span className="font-mono text-[#1a1a1a]">~{fmtINR(estimatedTax)}</span>
+            </div>
+            <div className="border-t border-[rgba(26,26,26,0.08)] pt-2 flex justify-between">
+              <span className="text-[14px] font-barlow font-black uppercase text-[#1a1a1a]">Estimated Total</span>
+              <span className="text-[16px] font-black font-mono text-[#1a1a1a]">{fmtINR(estimatedTotal)}</span>
+            </div>
+            <p className="text-[9px] text-[#1a1a1a]/30">Final amount may vary based on coupon &amp; taxes</p>
           </div>
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 bg-[#FFFFFF] border-t border-[rgba(26,26,26,0.10)] p-4">
+        <div className="p-4">
           <button
-            disabled={!canPlace}
-            onClick={placeOrder}
-            className="w-full py-3.5 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 disabled:opacity-40 disabled:cursor-not-allowed text-[#FFFFFF] text-[14px] font-semibold uppercase tracking-wider transition-colors"
+            onClick={() => setStep('checkout')}
+            className="w-full bg-[#1a1a1a] text-white py-4 rounded-2xl text-[14px] font-barlow font-black uppercase flex items-center justify-center gap-2"
           >
-            {orderType === 'dine-in' ? 'Place Order' : 'Confirm & Select Pickup Time'}
+            Proceed to Checkout <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       </div>
     );
   }
 
-  // ─── Pickup Time (Takeaway) ────────────────────────────────────────────────
-  if (step === 'pickup-time') {
+  // ── checkout ──────────────────────────────────────────────────────────────────
+  if (step === 'checkout') {
+    const isLoading = placeDineIn.isPending || requestOtp.isPending;
     return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col">
-        <div className="sticky top-0 z-20 bg-[#1a1a1a] border-b border-[rgba(240,234,210,0.10)] px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setStep('checkout')} className="text-[#FFFFFF]/50 hover:text-[#FFFFFF]">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <p className="text-[14px] font-barlow font-black uppercase text-[#FFFFFF]">Pickup Time</p>
+      <div className="min-h-screen bg-[#F7F7F7] font-sans flex flex-col">
+        <div className="sticky top-0 z-10 bg-white border-b border-[rgba(26,26,26,0.08)] px-4 py-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setStep('cart')} className="text-[#1a1a1a]/50">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <p className="text-[16px] font-barlow font-black uppercase text-[#1a1a1a]">Checkout</p>
+          </div>
         </div>
 
         <div className="flex-1 p-4 space-y-4">
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-5 text-center">
-            <Package className="w-10 h-10 text-[#E8447A] mx-auto mb-3" />
-            <h2 className="text-[16px] font-barlow font-black uppercase text-[#1a1a1a]">When to pick up?</h2>
-            <p className="text-[12px] text-[#1a1a1a]/50 mt-1">Select your preferred pickup time from the counter</p>
+          {/* Customer info */}
+          <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-4 space-y-3">
+            <p className="text-[11px] font-barlow font-black uppercase text-[#1a1a1a]">Your Details</p>
+            <div className="flex items-center gap-3 border border-[rgba(26,26,26,0.18)] rounded-xl px-4 py-3">
+              <User className="w-4 h-4 text-[#1a1a1a]/30 shrink-0" />
+              <input
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+                placeholder="Your name *"
+                className="flex-1 text-[13px] text-[#1a1a1a] placeholder-[#1a1a1a]/30 focus:outline-none bg-transparent"
+              />
+            </div>
+            <div className="flex items-center gap-3 border border-[rgba(26,26,26,0.18)] rounded-xl px-4 py-3">
+              <Phone className="w-4 h-4 text-[#1a1a1a]/30 shrink-0" />
+              <input
+                value={customerPhone}
+                onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder={orderType === 'takeaway' ? 'Phone number * (for OTP)' : 'Phone number (optional)'}
+                type="tel"
+                inputMode="numeric"
+                className="flex-1 text-[13px] text-[#1a1a1a] placeholder-[#1a1a1a]/30 focus:outline-none bg-transparent"
+              />
+            </div>
+            {orderType === 'dine-in' && !qrSlug && !tableId && (
+              <div className="flex items-center gap-3 border border-[rgba(26,26,26,0.18)] rounded-xl px-4 py-3">
+                <Hash className="w-4 h-4 text-[#1a1a1a]/30 shrink-0" />
+                <input
+                  value={manualTableNum}
+                  onChange={e => setManualTableNum(e.target.value)}
+                  placeholder="Table number (optional)"
+                  className="flex-1 text-[13px] text-[#1a1a1a] placeholder-[#1a1a1a]/30 focus:outline-none bg-transparent"
+                />
+              </div>
+            )}
           </div>
 
-          <div className="space-y-2">
-            {PICKUP_SLOTS.map(slot => (
-              <button
-                key={slot}
-                onClick={() => setPickupSlot(slot)}
-                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all text-left
-                  ${pickupSlot === slot ? 'border-[#E8447A] bg-[#E8447A]/10' : 'border-[rgba(26,26,26,0.15)] bg-white hover:border-[rgba(26,26,26,0.25)]'}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Clock className={`w-4 h-4 ${pickupSlot === slot ? 'text-[#1a1a1a]' : 'text-[#1a1a1a]/40'}`} />
-                  <span className={`text-[13px] font-medium ${pickupSlot === slot ? 'text-[#1a1a1a]' : 'text-[#1a1a1a]/60'}`}>{slot}</span>
-                </div>
-                {pickupSlot === slot && <CheckCircle2 className="w-5 h-5 text-[#1BC8C8]" />}
-              </button>
+          {/* Payment preference */}
+          <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-4 space-y-3">
+            <div>
+              <p className="text-[11px] font-barlow font-black uppercase text-[#1a1a1a]">Payment Preference</p>
+              <p className="text-[10px] text-[#1a1a1a]/40 mt-0.5">Actual payment collected at billing counter</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  ['upi', <Smartphone key="upi" className="w-4 h-4" />, 'UPI'],
+                  ['cash', <Banknote key="cash" className="w-4 h-4" />, 'Cash'],
+                  ['card', <CreditCard key="card" className="w-4 h-4" />, 'Card'],
+                ] as const
+              ).map(([id, icon, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setPayMethod(id)}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-[11px] font-mono
+                    ${payMethod === id ? 'border-[#1a1a1a] bg-[#1a1a1a] text-white' : 'border-[rgba(26,26,26,0.18)] text-[#1a1a1a]/60'}`}
+                >
+                  {icon}
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-4 space-y-2">
+            <p className="text-[11px] font-barlow font-black uppercase text-[#1a1a1a]">Order Summary</p>
+            {cart.map((e, i) => (
+              <div key={i} className="flex justify-between text-[12px]">
+                <span className="text-[#1a1a1a]/60">
+                  {e.qty}× {e.item.name}{e.variant ? ` (${e.variant.name})` : ''}
+                </span>
+                <span className="font-mono text-[#1a1a1a]">{fmtINR(e.lineTotal)}</span>
+              </div>
             ))}
-          </div>
-
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4 space-y-2">
-            <SummaryRow label="Items" value={`${cartCount} items`} />
-            <SummaryRow label="Total" value={`₹${(grandTotal * 83).toFixed(0)}`} highlight />
-            <SummaryRow label="Payment" value={payMethod.toUpperCase()} />
+            {couponCode && (
+              <p className="text-[11px] text-green-600 flex items-center gap-1">
+                <Tag className="w-3 h-3" /> Coupon: {couponCode}
+              </p>
+            )}
+            <div className="border-t border-[rgba(26,26,26,0.08)] pt-2 flex justify-between">
+              <span className="text-[13px] font-barlow font-black uppercase text-[#1a1a1a]">Est. Total</span>
+              <span className="text-[15px] font-black font-mono text-[#1a1a1a]">{fmtINR(estimatedTotal)}</span>
+            </div>
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-[#FFFFFF] border-t border-[rgba(26,26,26,0.10)] p-4">
+        <div className="p-4">
           <button
-            onClick={confirmPickup}
-            className="w-full py-3.5 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 text-[#FFFFFF] text-[14px] font-semibold uppercase tracking-wider transition-colors"
+            onClick={handleCheckoutSubmit}
+            disabled={isLoading}
+            className="w-full bg-[#1a1a1a] text-white py-4 rounded-2xl text-[14px] font-barlow font-black uppercase flex items-center justify-center gap-2 disabled:opacity-60"
           >
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {orderType === 'takeaway' ? 'Verify Phone & Continue' : 'Place Order'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── otp-verify ────────────────────────────────────────────────────────────────
+  if (step === 'otp-verify') {
+    return (
+      <div className="min-h-screen bg-[#F7F7F7] font-sans flex flex-col items-center justify-center p-6">
+        <div className="max-w-sm w-full space-y-8">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-2xl bg-[#E8447A]/10 flex items-center justify-center mx-auto">
+              <Smartphone className="w-7 h-7 text-[#E8447A]" />
+            </div>
+            <h2 className="text-[20px] font-barlow font-black uppercase text-[#1a1a1a]">Verify Phone</h2>
+            <p className="text-[13px] text-[#1a1a1a]/50">
+              OTP sent to <strong>+91 {customerPhone}</strong>
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              value={otpCode}
+              onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="Enter OTP"
+              type="tel"
+              inputMode="numeric"
+              autoFocus
+              className="w-full text-center text-[28px] font-black font-mono text-[#1a1a1a] tracking-[0.4em] border border-[rgba(26,26,26,0.18)] rounded-2xl px-6 py-4 focus:outline-none focus:border-[#E8447A]/50"
+            />
+            <button
+              onClick={handleVerifyOtp}
+              disabled={verifyOtp.isPending}
+              className="w-full bg-[#1a1a1a] text-white py-4 rounded-2xl text-[14px] font-barlow font-black uppercase flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {verifyOtp.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+              Verify &amp; Continue
+            </button>
+          </div>
+
+          <div className="text-center space-y-3">
+            <button
+              onClick={async () => {
+                try {
+                  await requestOtp.mutateAsync(customerPhone);
+                  toast.success('New OTP sent');
+                  setOtpCode('');
+                } catch { /* handled */ }
+              }}
+              disabled={requestOtp.isPending}
+              className="text-[12px] text-[#E8447A] underline underline-offset-2 disabled:opacity-50"
+            >
+              Resend OTP
+            </button>
+            <br />
+            <button onClick={() => setStep('checkout')} className="text-[12px] text-[#1a1a1a]/40">
+              ← Back to checkout
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── pickup-time ───────────────────────────────────────────────────────────────
+  if (step === 'pickup-time') {
+    return (
+      <div className="min-h-screen bg-[#F7F7F7] font-sans flex flex-col">
+        <div className="sticky top-0 z-10 bg-white border-b border-[rgba(26,26,26,0.08)] px-4 py-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setStep('otp-verify')} className="text-[#1a1a1a]/50">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <p className="text-[16px] font-barlow font-black uppercase text-[#1a1a1a]">Pickup Time</p>
+          </div>
+        </div>
+
+        <div className="flex-1 p-4">
+          <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-4 space-y-3">
+            <p className="text-[11px] font-barlow font-black uppercase text-[#1a1a1a]">
+              When do you want to pick up?
+            </p>
+            <div className="space-y-2">
+              {PICKUP_SLOTS.map(slot => (
+                <button
+                  key={slot}
+                  onClick={() => setPickupSlot(slot)}
+                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border transition-all
+                    ${pickupSlot === slot
+                      ? 'border-[#1a1a1a] bg-[#1a1a1a] text-white'
+                      : 'border-[rgba(26,26,26,0.18)] text-[#1a1a1a]'}`}
+                >
+                  <span className="text-[13px] font-medium">{slot}</span>
+                  {pickupSlot === slot && <CheckCircle2 className="w-4 h-4" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <button
+            onClick={handleConfirmPickup}
+            disabled={placeWindow.isPending}
+            className="w-full bg-[#1a1a1a] text-white py-4 rounded-2xl text-[14px] font-barlow font-black uppercase flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {placeWindow.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
             Confirm Order
           </button>
         </div>
@@ -871,135 +1217,241 @@ export default function QROrderingFlow({ onExit, tableNumber = 4 }: { onExit: ()
     );
   }
 
-  // ─── Token Screen (Takeaway) ───────────────────────────────────────────────
-  if (step === 'token') {
+  // ── order-placed ──────────────────────────────────────────────────────────────
+  if (step === 'order-placed') {
     return (
       <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col items-center justify-center p-6 text-center">
         <div className="max-w-sm w-full space-y-6">
-          <div className="w-14 h-14 rounded-2xl bg-[#1BC8C8]/15 flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-7 h-7 text-[#1BC8C8]" />
+          <div className="w-16 h-16 rounded-2xl bg-[#E8447A]/20 flex items-center justify-center mx-auto animate-bounce">
+            <UtensilsCrossed className="w-8 h-8 text-[#1a1a1a]" />
           </div>
           <div>
-            <h2 className="text-[20px] font-barlow font-black uppercase text-[#1a1a1a]">Order Confirmed!</h2>
-            <p className="text-[13px] text-[#1a1a1a]/50 mt-1">Your order has been received</p>
+            <h2 className="text-[22px] font-barlow font-black uppercase text-[#1a1a1a]">Order Placed!</h2>
+            <p className="text-[13px] text-[#1a1a1a]/50 mt-1.5">
+              {tableLabel} · {customerName}
+              {placedOrder?.orderNumber && ` · #${placedOrder.orderNumber}`}
+            </p>
           </div>
 
-          {/* Token Number */}
-          <div className="bg-[#1a1a1a] rounded-3xl p-8 text-center shadow-xl">
-            <p className="text-[11px] font-mono text-[#FFFFFF]/40 uppercase tracking-widest mb-2">Your Token Number</p>
-            <div className="text-[72px] font-black text-[#E8447A] font-mono leading-none">{tokenNumber}</div>
-            <p className="text-[10px] font-mono text-[#FFFFFF]/30 mt-3 uppercase tracking-widest">SmartDine Takeaway</p>
+          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-5 space-y-3 text-left">
+            <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a]">Your order</p>
+            {cart.map((e, i) => (
+              <div key={i} className="flex justify-between text-[12px]">
+                <span className="text-[#1a1a1a]/60">{e.qty}× {e.item.name}</span>
+                <span className="font-mono text-[#1a1a1a]">{fmtINR(e.lineTotal)}</span>
+              </div>
+            ))}
+            <div className="border-t border-[rgba(26,26,26,0.08)] pt-3 space-y-1.5">
+              {realDiscount > 0 && (
+                <div className="flex justify-between text-[12px]">
+                  <span className="text-green-600">Discount</span>
+                  <span className="font-mono text-green-600">-{fmtINR(realDiscount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-[12px]">
+                <span className="text-[#1a1a1a]/50">Tax</span>
+                <span className="font-mono text-[#1a1a1a]">{fmtINR(realTax)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[14px] font-barlow font-black uppercase text-[#1a1a1a]">Total</span>
+                <span className="text-[16px] font-black font-mono text-[#1a1a1a]">{fmtINR(realGrand)}</span>
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4 space-y-2 text-left">
-            <SummaryRow label="Pickup Time" value={pickupSlot} />
-            <SummaryRow label="Payment" value={payMethod.toUpperCase()} />
-            <SummaryRow label="Total" value={`₹${(grandTotal * 83).toFixed(0)}`} highlight />
-          </div>
+          {placedOrder?.estimatedPrepMinutes != null && (
+            <p className="text-[12px] text-[#1a1a1a]/40">
+              Est. prep time: <strong>{placedOrder.estimatedPrepMinutes} min</strong>
+            </p>
+          )}
 
-          <div className="space-y-2">
-            <button
-              onClick={() => setStep('token-status')}
-              className="w-full py-3 rounded-[100px] bg-[#1a1a1a] text-[#FFFFFF] text-[13px] font-semibold uppercase tracking-wider hover:bg-[#1a1a1a]/80 transition-colors"
+          <button
+            onClick={() => setStep('tracking')}
+            className="w-full bg-[#1a1a1a] text-white py-4 rounded-2xl text-[13px] font-barlow font-black uppercase flex items-center justify-center gap-2"
+          >
+            Track Order <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {placedOrder && (
+            <Link
+              to={`/track/${placedOrder.id}`}
+              className="block text-center text-[11px] text-[#1a1a1a]/40 underline underline-offset-2 mt-1"
             >
-              Track My Order
-            </button>
-            <button
-              onClick={() => setStep('token-board')}
-              className="w-full py-3 rounded-xl border border-[rgba(26,26,26,0.18)] text-[13px] text-[#1a1a1a]/60 font-medium hover:bg-[rgba(26,26,26,0.05)]"
-            >
-              View Token Board
-            </button>
-          </div>
+              Bookmark tracking page
+            </Link>
+          )}
         </div>
       </div>
     );
   }
 
-  // ─── Token Status (Takeaway Tracking) ─────────────────────────────────────
-  if (step === 'token-status') {
-    const takeawaySteps: { id: TrackingStatus; label: string; desc: string }[] = [
-      { id: 'placed',    label: 'Order Placed',    desc: 'Your order has been received' },
-      { id: 'preparing', label: 'Preparing',        desc: 'Kitchen is preparing your food' },
-      { id: 'ready',     label: 'Ready',            desc: 'Your order is ready for pickup!' },
-    ];
-    const currentIdx = takeawaySteps.findIndex(s => s.id === trackingStep);
-
+  // ── tracking ──────────────────────────────────────────────────────────────────
+  if (step === 'tracking') {
+    const isCancelled = currentStatus === 'cancelled';
     return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col items-center p-6">
-        <div className="max-w-sm w-full space-y-6">
-          <div className="flex items-center gap-3 pt-2">
-            <button onClick={() => setStep('token')} className="text-[#1a1a1a]/40 hover:text-[#1a1a1a]">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <p className="text-[15px] font-barlow font-black uppercase text-[#1a1a1a]">Order Status</p>
+      <div className="min-h-screen bg-[#F7F7F7] font-sans flex flex-col">
+        <div className="bg-white border-b border-[rgba(26,26,26,0.08)] px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest">{tableLabel}</p>
+              <p className="text-[16px] font-barlow font-black uppercase text-[#1a1a1a]">
+                Order #{placedOrder?.orderNumber ?? '—'}
+              </p>
+            </div>
+            <p className="text-[11px] text-[#1a1a1a]/40">{customerName}</p>
           </div>
+        </div>
 
-          <div className="bg-[#1a1a1a] rounded-2xl px-6 py-5 text-center">
-            <p className="text-[10px] font-mono text-[#FFFFFF]/40 uppercase tracking-widest">Token</p>
-            <div className="text-[48px] font-black text-[#E8447A] font-mono leading-none mt-1">{tokenNumber}</div>
-          </div>
-
-          {/* Progress */}
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-5 space-y-4">
-            {takeawaySteps.map((s, i) => {
-              const done = i < currentIdx;
-              const active = i === currentIdx;
-              return (
-                <div key={s.id} className="flex items-start gap-3">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 transition-all
-                    ${done ? 'bg-[#1BC8C8]/15 border-2 border-[#1BC8C8]' : active ? 'bg-[#E8447A]/20 border-2 border-[#E8447A]' : 'bg-[rgba(26,26,26,0.06)] border-2 border-[rgba(26,26,26,0.15)]'}`}
-                  >
-                    {done
-                      ? <CheckCircle2 className="w-4 h-4 text-[#1BC8C8]" />
-                      : active
-                        ? <div className="w-2.5 h-2.5 rounded-full bg-[#E8447A] animate-pulse" />
-                        : <div className="w-2 h-2 rounded-full bg-[rgba(26,26,26,0.20)]" />
-                    }
-                  </div>
-                  <div>
-                    <p className={`text-[13px] font-semibold ${done ? 'text-[#1BC8C8]' : active ? 'text-[#1a1a1a]' : 'text-[#1a1a1a]/30'}`}>{s.label}</p>
-                    <p className={`text-[11px] ${active ? 'text-[#1a1a1a]/60' : 'text-[#1a1a1a]/30'}`}>{s.desc}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {trackingStep === 'ready' && (
-            <div className="bg-[#1BC8C8]/10 border border-[#1BC8C8]/30 rounded-2xl p-4 text-center space-y-2">
-              <Bell className="w-8 h-8 text-[#1BC8C8] mx-auto" />
-              <p className="text-[15px] font-bold text-[#1BC8C8]">Your order is ready!</p>
-              <p className="text-[12px] text-[#1BC8C8]/70">Please collect from the counter with token #{tokenNumber}</p>
+        <div className="flex-1 p-4 space-y-4">
+          {isCancelled ? (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
+              <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+              <p className="text-[14px] font-barlow font-black uppercase text-red-700">Order Cancelled</p>
+              <p className="text-[12px] text-red-500/70 mt-1">Please speak to a staff member.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-5">
+              <StatusSteps steps={DINE_IN_STEPS} currentStatus={currentStatus} />
             </div>
           )}
 
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-[#1a1a1a]/40">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            Live updates enabled
+          </div>
+        </div>
+
+        <div className="p-4">
           <button
-            onClick={() => setStep('token-board')}
-            className="w-full py-3 rounded-xl border border-[rgba(26,26,26,0.18)] text-[13px] text-[#1a1a1a]/60 font-medium hover:bg-[rgba(26,26,26,0.05)]"
+            onClick={onExit}
+            className="w-full border border-[rgba(26,26,26,0.18)] text-[#1a1a1a]/60 py-3.5 rounded-2xl text-[13px] font-barlow font-black uppercase"
           >
-            View Token Board
+            Done
           </button>
         </div>
       </div>
     );
   }
 
-  // ─── Token Board (Public Display) ─────────────────────────────────────────
-  if (step === 'token-board') {
-    const servedTokens = [tokenNumber - 3, tokenNumber - 2, tokenNumber - 1].filter(n => n >= 100);
-    const upcomingTokens = [tokenNumber, tokenNumber + 1, tokenNumber + 2];
-    const nowServing = trackingStep === 'ready' ? tokenNumber : tokenNumber - 1;
-
+  // ── token ─────────────────────────────────────────────────────────────────────
+  if (step === 'token') {
+    const tokenNumber = placedOrder?.windowToken ?? '—';
     return (
-      <div className="min-h-screen bg-neutral-950 font-sans text-white flex flex-col">
-        <div className="px-6 py-4 border-b border-neutral-800 flex items-center justify-between">
+      <div className="min-h-screen bg-[#0F0F10] font-sans flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-xs w-full space-y-8">
+          <div>
+            <p className="text-[11px] font-mono text-white/30 uppercase tracking-widest">Order Confirmed</p>
+            <h1 className="text-[24px] font-barlow font-black uppercase text-white mt-2">{customerName}</h1>
+            {placedOrder?.orderNumber && (
+              <p className="text-[12px] text-white/40 mt-1">#{placedOrder.orderNumber}</p>
+            )}
+          </div>
+
+          <div>
+            <div className="w-44 h-44 rounded-3xl bg-pink-600 flex items-center justify-center mx-auto shadow-2xl shadow-pink-900/40">
+              <span className="text-[72px] font-black font-mono text-white leading-none">{tokenNumber}</span>
+            </div>
+            <p className="text-[10px] font-mono text-white/30 mt-3 uppercase tracking-[0.3em]">Your Token</p>
+          </div>
+
+          {placedOrder?.estimatedPrepMinutes != null && (
+            <p className="text-[12px] text-white/40">
+              Ready in approx <span className="text-white font-bold">{placedOrder.estimatedPrepMinutes} min</span>
+            </p>
+          )}
+
+          <div className="space-y-2.5">
+            <button
+              onClick={() => setStep('token-status')}
+              className="w-full bg-white/10 border border-white/10 text-white py-3.5 rounded-2xl text-[13px] font-barlow font-black uppercase"
+            >
+              Track Order
+            </button>
+            <button
+              onClick={() => setStep('token-board')}
+              className="w-full border border-white/10 text-white/40 py-3 rounded-2xl text-[12px] font-mono uppercase tracking-wider"
+            >
+              Token Board
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── token-status ──────────────────────────────────────────────────────────────
+  if (step === 'token-status') {
+    const tokenNumber = placedOrder?.windowToken ?? '—';
+    const isCancelled = currentStatus === 'cancelled';
+    return (
+      <div className="min-h-screen bg-[#F7F7F7] font-sans flex flex-col">
+        <div className="bg-white border-b border-[rgba(26,26,26,0.08)] px-4 py-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center">
-              <Hash className="w-4 h-4 text-white" />
+            <button onClick={() => setStep('token')} className="text-[#1a1a1a]/50">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest">
+                Token #{tokenNumber}
+              </p>
+              <p className="text-[16px] font-barlow font-black uppercase text-[#1a1a1a]">
+                Order #{placedOrder?.orderNumber ?? '—'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 p-4 space-y-4">
+          <div className="bg-pink-600 rounded-2xl p-6 text-center">
+            <p className="text-[10px] font-mono text-pink-200/70 uppercase tracking-widest mb-2">Your Token</p>
+            <span className="text-[56px] font-black font-mono text-white leading-none">{tokenNumber}</span>
+          </div>
+
+          {isCancelled ? (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
+              <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+              <p className="text-[14px] font-barlow font-black uppercase text-red-700">Order Cancelled</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-[rgba(26,26,26,0.10)] p-5">
+              <StatusSteps steps={WINDOW_STEPS} currentStatus={currentStatus} accentClass="bg-pink-600" />
+            </div>
+          )}
+
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-[#1a1a1a]/40">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            Live updates enabled
+          </div>
+        </div>
+
+        <div className="p-4 space-y-2">
+          <button
+            onClick={() => setStep('token-board')}
+            className="w-full border border-[rgba(26,26,26,0.18)] text-[#1a1a1a]/60 py-3.5 rounded-2xl text-[12px] font-mono uppercase"
+          >
+            Token Board
+          </button>
+          <button onClick={onExit} className="w-full text-[#1a1a1a]/30 py-2 text-[12px] font-mono">
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── token-board ───────────────────────────────────────────────────────────────
+  if (step === 'token-board') {
+    const myToken = placedOrder?.windowToken ?? '—';
+    const isReady = currentStatus === 'ready';
+    return (
+      <div className="min-h-screen bg-[#0d0d0f] font-sans flex flex-col">
+        <div className="px-6 py-5 flex items-center justify-between border-b border-neutral-800">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-pink-600/20 flex items-center justify-center">
+              <Hash className="w-4 h-4 text-pink-400" />
             </div>
             <div>
-              <h1 className="text-[14px] font-bold uppercase tracking-widest">Token Board</h1>
+              <h1 className="text-[14px] font-bold uppercase tracking-widest text-white">Token Board</h1>
               <p className="text-[9px] text-neutral-500 uppercase tracking-widest">SMARTDINE · LIVE COUNTER</p>
             </div>
           </div>
@@ -1017,57 +1469,28 @@ export default function QROrderingFlow({ onExit, tableNumber = 4 }: { onExit: ()
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
-          {/* Now Serving */}
-          <div className="text-center">
-            <p className="text-[12px] font-mono text-neutral-400 uppercase tracking-[0.3em] mb-4">Now Serving</p>
-            <div className="relative">
-              <div className="w-48 h-48 rounded-3xl bg-pink-600 flex items-center justify-center shadow-2xl shadow-pink-900/40">
-                <span className="text-[80px] font-black font-mono text-white leading-none">{nowServing}</span>
-              </div>
+        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+          <p className="text-[12px] font-mono text-neutral-400 uppercase tracking-[0.3em]">Your Token</p>
+          <div className="relative">
+            <div className="w-48 h-48 rounded-3xl bg-pink-600 flex items-center justify-center shadow-2xl shadow-pink-900/40">
+              <span className="text-[80px] font-black font-mono text-white leading-none">{myToken}</span>
+            </div>
+            {isReady && (
               <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-emerald-400 flex items-center justify-center animate-bounce">
                 <Bell className="w-4 h-4 text-white" />
               </div>
-            </div>
+            )}
           </div>
-
-          {/* Queue */}
-          <div className="w-full max-w-sm space-y-3">
-            <p className="text-[11px] font-mono text-neutral-500 uppercase tracking-widest text-center">Up Next</p>
-            {upcomingTokens.map((t, i) => (
-              <div
-                key={t}
-                className={`flex items-center justify-between px-5 py-3.5 rounded-xl border transition-all
-                  ${t === tokenNumber && trackingStep !== 'ready'
-                    ? 'border-amber-700/60 bg-amber-950/30'
-                    : 'border-neutral-800 bg-neutral-900/50'}`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`text-[28px] font-black font-mono leading-none ${t === tokenNumber ? 'text-amber-300' : 'text-neutral-500'}`}>{t}</span>
-                  {t === tokenNumber && (
-                    <span className="text-[9px] font-mono bg-amber-900/60 text-amber-300 border border-amber-800/50 px-2 py-0.5 rounded-full uppercase tracking-wider">Your Order</span>
-                  )}
-                </div>
-                <div className={`text-[10px] font-mono ${t === tokenNumber ? 'text-amber-400' : 'text-neutral-600'}`}>
-                  {i === 0 ? 'Preparing' : i === 1 ? 'In Queue' : 'Waiting'}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Recently Served */}
-          {servedTokens.length > 0 && (
-            <div className="w-full max-w-sm">
-              <p className="text-[10px] font-mono text-neutral-600 uppercase tracking-widest text-center mb-2">Recently Served</p>
-              <div className="flex items-center justify-center gap-3">
-                {servedTokens.map(t => (
-                  <div key={t} className="w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center">
-                    <span className="text-[16px] font-bold font-mono text-neutral-600">{t}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <p className={`text-[14px] font-mono font-bold uppercase tracking-widest
+            ${isReady ? 'text-emerald-400' : currentStatus === 'preparing' ? 'text-amber-400' : 'text-neutral-500'}`}>
+            {isReady
+              ? 'Ready for Pickup!'
+              : currentStatus === 'preparing'
+                ? 'Preparing…'
+                : currentStatus === 'accepted'
+                  ? 'Accepted'
+                  : 'Order Received'}
+          </p>
         </div>
 
         <div className="px-6 py-4 border-t border-neutral-800 flex items-center justify-between text-[10px] font-mono text-neutral-600">
@@ -1078,153 +1501,5 @@ export default function QROrderingFlow({ onExit, tableNumber = 4 }: { onExit: ()
     );
   }
 
-  // ─── Order Placed (Dine-In Confirmation) ──────────────────────────────────
-  if (step === 'order-placed') {
-    return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col items-center justify-center p-6 text-center">
-        <div className="max-w-sm w-full space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-[#E8447A]/20 flex items-center justify-center mx-auto animate-bounce">
-            <UtensilsCrossed className="w-8 h-8 text-[#1a1a1a]" />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-barlow font-black uppercase text-[#1a1a1a]">Order Placed!</h2>
-            <p className="text-[13px] text-[#1a1a1a]/50 mt-1.5">{tableLabel} · {customerName}</p>
-          </div>
-
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-5 space-y-3">
-            <p className="text-[12px] font-barlow font-black uppercase text-[#1a1a1a] text-left">Your order</p>
-            {cart.map((e, i) => (
-              <div key={i} className="flex justify-between text-[12px]">
-                <span className="text-[#1a1a1a]/60 text-left">{e.qty}× {e.item.name}</span>
-                <span className="font-mono text-[#1a1a1a]">₹{(e.lineTotal * 83).toFixed(0)}</span>
-              </div>
-            ))}
-            <div className="border-t border-[rgba(26,26,26,0.08)] pt-2 flex justify-between">
-              <span className="text-[13px] font-bold text-[#1a1a1a]">Total</span>
-              <span className="text-[13px] font-bold font-mono text-[#1a1a1a]">₹{(grandTotal * 83).toFixed(0)}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setStep('tracking')}
-            className="w-full py-3.5 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 text-[#FFFFFF] text-[14px] font-semibold uppercase tracking-wider transition-colors"
-          >
-            Track Order Live
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Order Tracking (Dine-In) ──────────────────────────────────────────────
-  if (step === 'tracking') {
-    const currentIdx = TRACKING_STEPS.findIndex(s => s.id === trackingStep);
-    return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans flex flex-col">
-        <div className="sticky top-0 z-20 bg-[#1a1a1a] border-b border-[rgba(240,234,210,0.10)] px-4 py-3 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-[#E8447A] flex items-center justify-center">
-            <UtensilsCrossed className="w-4 h-4 text-[#1a1a1a]" />
-          </div>
-          <div>
-            <p className="text-[14px] font-barlow font-black uppercase text-[#FFFFFF]">Order Tracking</p>
-            <p className="text-[10px] text-[#FFFFFF]/40 font-mono uppercase">{tableLabel} · {customerName}</p>
-          </div>
-        </div>
-
-        <div className="flex-1 p-4 space-y-4 max-w-sm mx-auto w-full">
-          {/* Estimated time */}
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-[#E8447A]" />
-              <div>
-                <p className="text-[13px] font-semibold text-[#1a1a1a]">Estimated Time</p>
-                <p className="text-[11px] text-[#1a1a1a]/40">Based on current kitchen load</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-[20px] font-bold font-mono text-[#1a1a1a]">
-                {trackingStep === 'placed' ? '~18' : trackingStep === 'accepted' ? '~15' : trackingStep === 'preparing' ? '~8' : '~0'}
-              </p>
-              <p className="text-[10px] text-[#1a1a1a]/40">min</p>
-            </div>
-          </div>
-
-          {/* Progress Steps */}
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-5">
-            <div className="relative">
-              {/* Vertical line */}
-              <div className="absolute left-3.5 top-4 bottom-4 w-px bg-[rgba(26,26,26,0.08)]" />
-              <div className="space-y-5">
-                {TRACKING_STEPS.map((s, i) => {
-                  const done = i < currentIdx;
-                  const active = i === currentIdx;
-                  return (
-                    <div key={s.id} className="flex items-start gap-4 relative">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10 border-2 transition-all
-                        ${done ? 'bg-[#1BC8C8] border-[#1BC8C8]' : active ? 'bg-[#E8447A] border-[#E8447A]' : 'bg-white border-[rgba(26,26,26,0.15)]'}`}
-                      >
-                        {done
-                          ? <CheckCircle2 className="w-4 h-4 text-white" />
-                          : active
-                            ? <div className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
-                            : <div className="w-2 h-2 rounded-full bg-[rgba(26,26,26,0.15)]" />
-                        }
-                      </div>
-                      <div className="pt-0.5">
-                        <p className={`text-[13px] font-semibold ${done ? 'text-[#1BC8C8]' : active ? 'text-[#1a1a1a]' : 'text-[#1a1a1a]/30'}`}>
-                          {s.label}
-                          {active && <span className="text-[10px] font-mono ml-1.5 bg-[#E8447A]/20 text-[#1a1a1a] px-1.5 py-0.5 rounded-full">Now</span>}
-                        </p>
-                        <p className={`text-[11px] mt-0.5 ${active ? 'text-[#1a1a1a]/60' : 'text-[#1a1a1a]/30'}`}>{s.desc}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Order summary */}
-          <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4 space-y-2">
-            <p className="text-[11px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest mb-2">Order Items</p>
-            {cart.map((e, i) => (
-              <div key={i} className="flex justify-between text-[12px]">
-                <span className="text-[#1a1a1a]/60">{e.qty}× {e.item.name}</span>
-                <span className="font-mono text-[#1a1a1a]">₹{(e.lineTotal * 83).toFixed(0)}</span>
-              </div>
-            ))}
-            <div className="border-t border-[rgba(26,26,26,0.08)] pt-2 flex justify-between">
-              <span className="text-[12px] font-semibold text-[#1a1a1a]">Total Paid</span>
-              <span className="text-[12px] font-bold font-mono text-[#1a1a1a]">₹{(grandTotal * 83).toFixed(0)}</span>
-            </div>
-          </div>
-
-          {trackingStep === 'served' && (
-            <div className="bg-[#E8447A]/15 border border-[#E8447A]/40 rounded-2xl p-5 text-center space-y-3">
-              <div className="text-4xl">🎉</div>
-              <p className="text-[16px] font-bold text-[#1a1a1a]">Enjoy your meal!</p>
-              <p className="text-[12px] text-[#1a1a1a]/60">Thank you for dining at SmartDine</p>
-              <button
-                onClick={onExit}
-                className="w-full py-2.5 rounded-[100px] bg-[#1a1a1a] text-[#FFFFFF] text-[13px] font-medium hover:bg-[#1a1a1a]/80"
-              >
-                Back to Home
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return null;
-}
-
-function SummaryRow({ label, value, highlight, accent }: { label: string; value: string; highlight?: boolean; accent?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[12px] text-[#1a1a1a]/50">{label}</span>
-      <span className={`text-[12px] font-mono font-medium ${highlight ? 'text-[#1a1a1a] font-bold' : accent ?? 'text-[#1a1a1a]'}`}>{value}</span>
-    </div>
-  );
 }

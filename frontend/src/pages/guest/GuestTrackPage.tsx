@@ -179,30 +179,77 @@ export default function GuestTrackPage() {
           </div>
         )}
 
-        {/* Items */}
+        {/* Bill */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h3 className="font-semibold text-gray-900 text-sm">Your items</h3>
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900 text-sm">Your Bill</h3>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-pink-500">#{order.orderNumber}</span>
           </div>
+
+          {/* Line items */}
           <div className="divide-y divide-gray-50">
-            {order.items.map((item) => (
-              <div key={item.id} className="px-5 py-3 flex items-center justify-between">
-                <div className="flex-1">
+            {order.items.filter(i => i.status !== 'cancelled').map((item) => (
+              <div key={item.id} className="px-5 py-3 flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">
                     {item.qty}× {item.name}
+                    {item.variantName && <span className="text-gray-400 font-normal"> ({item.variantName})</span>}
                   </p>
+                  {item.modifiers.length > 0 && (
+                    <p className="text-[11px] text-gray-400 mt-0.5">{item.modifiers.join(', ')}</p>
+                  )}
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-50 text-gray-600 border border-gray-200 capitalize">
-                  {item.status}
-                </span>
+                <span className="text-sm font-mono text-gray-800 shrink-0">₹{item.lineTotal.toFixed(2)}</span>
               </div>
             ))}
           </div>
-          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-sm">
-            <span className="text-gray-600 font-medium">Total</span>
-            <span className="font-bold text-gray-900">
-              ₹{order.totals.grand.toFixed(2)}
-            </span>
+
+          {/* Totals breakdown */}
+          <div className="px-5 pt-3 pb-4 bg-gray-50 border-t border-gray-100 space-y-1.5">
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Subtotal</span>
+              <span className="font-mono">₹{order.totals.subtotal.toFixed(2)}</span>
+            </div>
+            {order.totals.modifierTotal > 0 && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Add-ons</span>
+                <span className="font-mono">₹{order.totals.modifierTotal.toFixed(2)}</span>
+              </div>
+            )}
+            {order.totals.discount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Discount</span>
+                <span className="font-mono">−₹{order.totals.discount.toFixed(2)}</span>
+              </div>
+            )}
+            {order.totals.serviceCharge > 0 && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Service charge</span>
+                <span className="font-mono">₹{order.totals.serviceCharge.toFixed(2)}</span>
+              </div>
+            )}
+            {order.totals.taxBreakup.map((t) => (
+              <div key={t.name} className="flex justify-between text-sm text-gray-500">
+                <span>{t.name} ({t.rate}%)</span>
+                <span className="font-mono">₹{t.amount.toFixed(2)}</span>
+              </div>
+            ))}
+            {order.totals.taxBreakup.length === 0 && order.totals.tax > 0 && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Tax</span>
+                <span className="font-mono">₹{order.totals.tax.toFixed(2)}</span>
+              </div>
+            )}
+            {order.totals.roundOff !== 0 && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Round off</span>
+                <span className="font-mono">₹{order.totals.roundOff.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200 mt-1">
+              <span>Total</span>
+              <span className="font-mono">₹{order.totals.grand.toFixed(2)}</span>
+            </div>
           </div>
         </div>
 

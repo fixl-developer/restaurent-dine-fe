@@ -34,8 +34,10 @@ export function useSocket(
     return () => {
       for (const [event, fn] of Object.entries(wrapped)) socket.off(event, fn);
     };
+    // Object.keys(handlers) is included so new event keys added after mount trigger re-subscription.
+    // Individual handler function changes are handled by handlersRef without re-subscribing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [namespace, JSON.stringify(options.query), options.enabled]);
+  }, [namespace, JSON.stringify(options.query), options.enabled, Object.keys(handlers).sort().join(',')]);
 
   return socketRef.current;
 }

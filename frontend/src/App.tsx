@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import Header from './components/Header';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import CartDrawer from './components/CartDrawer';
 import CheckoutModal from './components/CheckoutModal';
 import LoginPage from './pages/LoginPage';
@@ -27,7 +26,6 @@ import SplashScreen from './components/SplashScreen';
 // Pages
 import VendorDashboard from './components/VendorDashboard';
 import StorytellingHome from './components/StorytellingHome';
-import CustomerOrderTracker from './components/CustomerOrderTracker';
 import AdminPortal from './components/admin/AdminPortal';
 import KitchenDisplaySystem from './components/operations/KitchenDisplaySystem';
 import TableOperations from './components/operations/TableOperations';
@@ -173,11 +171,6 @@ export default function App() {
     placardColor: 'pink',
   });
 
-  const handleScrollTo = (elementId: string) => {
-    const element = document.getElementById(elementId);
-    if (element) element.scrollIntoView({ behavior: 'smooth' });
-  };
-
   const handleAddToCart = (item: MenuItem | CartItem) => {
     setCartItems((prev) => {
       const existing = prev.find((it) => it.id === item.id);
@@ -314,10 +307,10 @@ export default function App() {
   const handleNewOrderReset = () => {
     setCartItems([]);
     setIsCheckoutOpen(false);
+    setCheckoutData({ address: '', notes: '', totalCost: 0, itemsList: [] });
   };
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const isOrderTrackerRoute = location.pathname === '/order-tracker';
 
   return (
     <div
@@ -325,16 +318,6 @@ export default function App() {
       className="min-h-screen font-sans text-neutral-800 antialiased flex flex-col justify-between selection:bg-pink-100 selection:text-pink-600 w-full"
       style={{ background: '#FFFFFF', width: '100%', overflowX: 'hidden' }}
     >
-      {/* Legacy Header — only the order-tracker page needs it; other pages have their own */}
-      {isOrderTrackerRoute && (
-        <Header
-          activePage="order-tracker"
-          onChangePage={navigate}
-          onScrollTo={handleScrollTo}
-          cartCount={cartCount}
-          onOpenCart={() => setIsCartOpen(true)}
-        />
-      )}
 
       <main className="flex-grow">
         <Routes>
@@ -425,7 +408,7 @@ export default function App() {
           />
           <Route
             path="/qr-order"
-            element={<QROrderingFlow onExit={() => navigate('home')} tableNumber={4} />}
+            element={<QROrderingFlow onExit={() => navigate('/')} />}
           />
 
           {/* ── Phase 12: public guest pages ── */}
@@ -459,17 +442,8 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/order-tracker"
-            element={
-              <CustomerOrderTracker
-                cartItems={cartItems}
-                checkoutData={checkoutData}
-                onResetOrder={handleNewOrderReset}
-                setActivePage={navigate}
-              />
-            }
-          />
+          {/* /order-tracker was a demo page — real customer tracking is at /track/:orderId */}
+          <Route path="/order-tracker" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 

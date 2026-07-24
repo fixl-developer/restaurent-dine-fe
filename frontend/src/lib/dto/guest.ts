@@ -129,7 +129,7 @@ export interface GuestOrderDto {
   channel: OrderChannel;
   windowToken?: string;
   estimatedPrepMinutes: number;
-  items: Array<{ id: string; name: string; qty: number; status: OrderItemStatus }>;
+  items: Array<{ id: string; name: string; variantName?: string; qty: number; lineTotal: number; status: OrderItemStatus; modifiers: string[] }>;
   totals: OrderTotalsDto;
 }
 
