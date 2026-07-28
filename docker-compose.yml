@@ -1,0 +1,70 @@
+version: '3.9'
+
+services:
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: smartdine-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: smartdine
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - smartdine
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend API ────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartdine-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/smartdine
+    ports:
+      - '${PORT:-4000}:4000'
+    networks:
+      - smartdine
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Seed (runs once, then exits) ──────────────────────────────────────────
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.seed
+    container_name: smartdine-seed
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/smartdine
+    networks:
+      - smartdine
+    profiles:
+      - setup   # only runs when: docker compose --profile setup up seed
+
+volumes:
+  mongo_data:
+
+networks:
+  smartdine:
+    driver: bridge

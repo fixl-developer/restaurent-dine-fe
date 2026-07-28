@@ -1,0 +1,35 @@
+version: '3.9'
+
+# Production override — adds Nginx reverse proxy with SSL
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  mongo:
+    volumes:
+      - mongo_data:/data/db
+    # In production, restrict to internal network only (no port exposure)
+    expose:
+      - '27017'
+
+  api:
+    # Don't expose port directly — Nginx handles it
+    ports: []
+    expose:
+      - '4000'
+    environment:
+      NODE_ENV: production
+
+  nginx:
+    image: nginx:alpine
+    container_name: smartdine-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - smartdine
