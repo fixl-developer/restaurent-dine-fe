@@ -1,646 +1,541 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Receipt, CreditCard, Banknote, Smartphone,
-  Percent, Tag, Printer, CheckCircle2, X, ChevronDown,
-  Split, User, Phone, Hash, Building2, AlertCircle, Copy, LogOut
+  Wallet, Percent, Printer, CheckCircle2, X, Loader2,
+  Download, LogOut, RefreshCw, Clock, Hash,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLogout } from '@/hooks/useAuth';
+import { useOrders } from '@/hooks/useOrders';
+import {
+  useGenerateInvoice, useRecordPayment, useUpiQr,
+  downloadInvoicePdf, openInvoicePdf, useInvoice,
+  useCurrentCashSession, useOpenCashSession, useCloseCashSession,
+} from '@/hooks/useBilling';
+import { useSocket } from '@/hooks/useSocket';
+import type { OrderDto } from '@/lib/dto/orders';
+import { type PaymentMode, PAYMENT_MODE_LABELS } from '@/lib/dto/billing';
 
-interface BillItem {
-  id: string;
-  name: string;
-  qty: number;
-  unitPrice: number;
-  category: string;
+function fmtINR(n: number) {
+  return `₹${n.toFixed(2)}`;
 }
 
-interface TableBill {
-  tableId: string;
-  tableLabel: string;
-  zone: string;
-  customerName: string;
-  serverName: string;
-  items: BillItem[];
-  seatedMins: number;
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-const MOCK_BILLS: TableBill[] = [
-  {
-    tableId: 't3', tableLabel: 'T3 · Window', zone: 'Window', customerName: 'ETHAN HUNT', serverName: 'Mia W.', seatedMins: 42,
-    items: [
-      { id: 'i1', name: 'Wok-fired Handmade Egg Noodles', qty: 2, unitPrice: 12.00, category: 'Mains' },
-      { id: 'i2', name: 'Garden Fresh Tossed Salad', qty: 1, unitPrice: 9.50, category: 'Mains' },
-      { id: 'i3', name: 'Peach Garden Strawberry Matcha Latte', qty: 2, unitPrice: 5.50, category: 'Drinks' },
-      { id: 'i4', name: 'Signature Chili Soy Dipping Sauce', qty: 1, unitPrice: 1.50, category: 'Sides' },
-    ],
-  },
-  {
-    tableId: 't4', tableLabel: 'T4 · Window', zone: 'Window', customerName: 'ARIA VANCE', serverName: 'Sophia C.', seatedMins: 68,
-    items: [
-      { id: 'i5', name: 'Strawberry Icing Velvet Cake', qty: 2, unitPrice: 6.80, category: 'Sweets' },
-      { id: 'i6', name: 'Double Matcha Crème Mille Crêpe', qty: 1, unitPrice: 7.90, category: 'Sweets' },
-      { id: 'i7', name: 'Peach Oatmeal Cream Smoothie', qty: 2, unitPrice: 5.00, category: 'Drinks' },
-      { id: 'i8', name: 'Creamy Potato & Egg Salad Plate', qty: 1, unitPrice: 4.80, category: 'Sides' },
-    ],
-  },
-  {
-    tableId: 'm5', tableLabel: 'T5 · Main Floor', zone: 'Main Floor', customerName: 'CHLOE GOMEZ', serverName: 'James K.', seatedMins: 55,
-    items: [
-      { id: 'i9',  name: 'Sesame Glazed Braised Pork Rice', qty: 2, unitPrice: 13.90, category: 'Mains' },
-      { id: 'i10', name: 'Sichuan Sesame Chili Noodles', qty: 1, unitPrice: 11.50, category: 'Mains' },
-      { id: 'i11', name: 'Sweet Raspberry Infusion Soda', qty: 3, unitPrice: 4.80, category: 'Drinks' },
-      { id: 'i12', name: 'Diner Golden Egg Potato Croquettes', qty: 2, unitPrice: 5.20, category: 'Sides' },
-      { id: 'i13', name: 'Coquette Berry Whipped Princess Cake', qty: 1, unitPrice: 8.20, category: 'Sweets' },
-    ],
-  },
-  {
-    tableId: 'p17', tableLabel: 'P3 · Patio Garden', zone: 'Patio Garden', customerName: 'SARA WILDE', serverName: 'Mia W.', seatedMins: 72,
-    items: [
-      { id: 'i14', name: 'Golden Peach Morning Oat Bowl', qty: 2, unitPrice: 8.50, category: 'Sweets' },
-      { id: 'i15', name: 'Classic Berry Chia Oats Porridge', qty: 2, unitPrice: 7.50, category: 'Sweets' },
-      { id: 'i16', name: 'Peach Garden Strawberry Matcha Latte', qty: 4, unitPrice: 5.50, category: 'Drinks' },
-    ],
-  },
-];
-
-type PaymentMethod = 'upi' | 'cash' | 'card';
-type InvoiceView = 'billing' | 'gst-invoice';
-
-const COUPON_CODES: Record<string, number> = {
-  'SMART10': 10,
-  'WELCOME5': 5,
-  'FEAST15': 15,
+const METHOD_CONFIG: Record<PaymentMode, { icon: React.ElementType; color: string }> = {
+  cash:          { icon: Banknote,   color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+  upi:           { icon: Smartphone, color: 'text-pink-600 bg-pink-50 border-pink-200' },
+  card:          { icon: CreditCard, color: 'text-blue-600 bg-blue-50 border-blue-200' },
+  wallet:        { icon: Wallet,     color: 'text-violet-600 bg-violet-50 border-violet-200' },
+  online_prepay: { icon: Smartphone, color: 'text-amber-600 bg-amber-50 border-amber-200' },
 };
 
-const CGST_RATE = 0.025;
-const SGST_RATE = 0.025;
-
-interface SplitEntry { label: string; amount: number; paid: boolean; }
-
 export default function BillingPayments({ onExit }: { onExit: () => void }) {
+  const qc = useQueryClient();
   const logoutMutation = useLogout();
-  const [selectedTableId, setSelectedTableId] = useState<string>('t3');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
-  const [couponInput, setCouponInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; pct: number } | null>(null);
-  const [couponError, setCouponError] = useState('');
-  const [invoiceView, setInvoiceView] = useState<InvoiceView>('billing');
-  const [showSplit, setShowSplit] = useState(false);
-  const [splitCount, setSplitCount] = useState(2);
-  const [splitEntries, setSplitEntries] = useState<SplitEntry[]>([]);
-  const [paymentDone, setPaymentDone] = useState(false);
-  const [cashReceived, setCashReceived] = useState('');
 
-  const bill = MOCK_BILLS.find(b => b.tableId === selectedTableId)!;
-  const subtotal = bill.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  const discountAmt = appliedCoupon ? subtotal * (appliedCoupon.pct / 100) : 0;
-  const afterDiscount = subtotal - discountAmt;
-  const cgst = afterDiscount * CGST_RATE;
-  const sgst = afterDiscount * SGST_RATE;
-  const grandTotal = afterDiscount + cgst + sgst;
+  // Load all active orders (not settled/cancelled) — staff picks which to bill
+  const ordersQuery = useOrders({ limit: 100 });
+  const { data: cashSession } = useCurrentCashSession();
+  const openCashSession = useOpenCashSession();
+  const closeCashSession = useCloseCashSession();
+  const generateInvoice = useGenerateInvoice();
+  const recordPayment = useRecordPayment();
+  const upiQr = useUpiQr();
 
-  // Convert to INR for display (1 USD ~ 83 INR)
-  const inr = (usd: number) => `₹${(usd * 83).toFixed(2)}`;
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMode>('cash');
+  const [discountCode, setDiscountCode] = useState('');
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [cashTendered, setCashTendered] = useState('');
+  const [openingFloat, setOpeningFloat] = useState('');
+  const [showCashOpen, setShowCashOpen] = useState(false);
+  const [showCashClose, setShowCashClose] = useState(false);
+  const [actualCash, setActualCash] = useState('');
+  const [upiQrData, setUpiQrData] = useState<string | null>(null);
+  const [step, setStep] = useState<'select' | 'bill' | 'pay' | 'done'>('select');
 
-  const applyCoupon = () => {
-    const code = couponInput.trim().toUpperCase();
-    if (COUPON_CODES[code]) {
-      setAppliedCoupon({ code, pct: COUPON_CODES[code] });
-      setCouponError('');
-      setCouponInput('');
-    } else {
-      setCouponError('Invalid coupon code');
-    }
-  };
+  const invoiceQuery = useInvoice(invoiceId);
+  const invoice = invoiceQuery.data;
 
-  const buildSplitEntries = (count: number) => {
-    const perPerson = grandTotal / count;
-    setSplitEntries(
-      Array.from({ length: count }, (_, i) => ({
-        label: `Person ${i + 1}`,
-        amount: perPerson,
-        paid: false,
-      }))
-    );
-    setShowSplit(true);
-  };
+  const orders = (ordersQuery.data?.items ?? []).filter(
+    (o) => o.status !== 'settled' && o.status !== 'cancelled',
+  );
 
-  const toggleSplitPaid = (i: number) => {
-    setSplitEntries(prev => prev.map((e, idx) => idx === i ? { ...e, paid: !e.paid } : e));
-  };
+  // Real-time updates
+  useSocket('/billing', {
+    'order:updated': () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+    },
+    'invoice:updated': () => qc.invalidateQueries({ queryKey: ['invoices'] }),
+    'payment:recorded': () => {
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      qc.invalidateQueries({ queryKey: ['payments'] });
+    },
+  });
 
-  const handlePay = () => {
-    setPaymentDone(true);
-  };
-
-  const invoiceNumber = `INV-2026-${bill.tableId.toUpperCase()}-${Date.now().toString().slice(-5)}`;
-
-  if (paymentDone) {
-    return (
-      <div className="min-h-screen bg-[#FFFFFF] font-sans text-[#1a1a1a] flex items-center justify-center p-6">
-        <div className="max-w-sm w-full text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-[#E8447A]/20 border-2 border-[#E8447A] flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-8 h-8 text-[#E8447A]" />
-          </div>
-          <div>
-            <h2 className="text-[20px] font-barlow font-black uppercase text-[#E8447A] tracking-wide">Payment Successful</h2>
-            <p className="text-[13px] text-[#1a1a1a]/50 mt-1">{bill.tableLabel} · {bill.customerName}</p>
-          </div>
-          <div className="bg-white rounded-[22px] border border-[#E8447A]/40 p-4 text-left space-y-2">
-            <InfoRow2 label="Amount Paid" value={inr(grandTotal)} highlight />
-            <InfoRow2 label="Method" value={paymentMethod === 'upi' ? 'UPI' : paymentMethod === 'cash' ? 'Cash' : 'Card'} />
-            <InfoRow2 label="Invoice" value={invoiceNumber} />
-            <InfoRow2 label="Server" value={bill.serverName} />
-          </div>
-          <button
-            onClick={() => { setPaymentDone(false); setAppliedCoupon(null); }}
-            className="w-full py-3 rounded-[100px] bg-[#1a1a1a] text-[#FFFFFF] text-[13px] font-medium uppercase tracking-wider hover:bg-[#1a1a1a]/80 transition-colors"
-          >
-            New Transaction
-          </button>
-          <button
-            onClick={onExit}
-            className="w-full py-2.5 rounded-xl border border-[rgba(26,26,26,0.18)] text-[12px] font-medium text-[#1a1a1a]/60 hover:bg-[rgba(26,26,26,0.05)]"
-          >
-            Exit Billing
-          </button>
-        </div>
-      </div>
-    );
+  async function handleGenerateInvoice() {
+    if (!selectedOrderId) return;
+    const result = await generateInvoice.mutateAsync({
+      orderId: selectedOrderId,
+      input: {
+        couponCode: discountCode || undefined,
+        discount: discountAmount > 0 ? discountAmount : undefined,
+      },
+    });
+    setInvoiceId(result._id);
+    setStep('pay');
   }
+
+  async function handleRecordPayment() {
+    if (!invoiceId || !invoice) return;
+    const amount = invoice.amountDue;
+    const tendered = paymentMethod === 'cash' ? parseFloat(cashTendered) || amount : undefined;
+
+    if (paymentMethod === 'upi') {
+      const qrData = await upiQr.mutateAsync(invoiceId);
+      setUpiQrData(qrData.upiDeeplink ?? 'UPI QR generated — check terminal');
+      return;
+    }
+
+    await recordPayment.mutateAsync({
+      invoiceId,
+      input: {
+        mode: paymentMethod,
+        amount,
+        cashTendered: tendered,
+      },
+    });
+    setStep('done');
+  }
+
+  function resetFlow() {
+    setSelectedOrderId(null);
+    setInvoiceId(null);
+    setStep('select');
+    setDiscountCode('');
+    setDiscountAmount(0);
+    setCashTendered('');
+    setUpiQrData(null);
+  }
+
+  const selectedOrder = orders.find((o) => o._id === selectedOrderId);
 
   return (
     <div className="min-h-screen bg-[#FFFFFF] font-sans text-[#1a1a1a] flex flex-col">
       {/* Top Bar */}
-      <div className="sticky top-0 z-30 bg-[#1a1a1a] border-b-2 border-[#E8447A]/60 px-4 md:px-8 py-3 flex items-center justify-between">
+      <div className="sticky top-0 z-30 bg-[#1a1a1a] px-4 md:px-8 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#E8447A] flex items-center justify-center">
-            <Receipt className="w-4 h-4 text-[#1a1a1a]" />
+            <Receipt className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h1 className="text-[13px] font-barlow font-black uppercase tracking-[0.15em] text-[#E8447A]">Billing & Payments</h1>
-            <p className="text-[9px] text-[#E8447A]/50 uppercase tracking-widest">SMARTDINE · POS TERMINAL</p>
+            <h1 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Billing & Payments</h1>
+            <p className="text-[9px] text-white/40 uppercase tracking-widest">
+              {cashSession?.status === 'open'
+                ? `Cash Session Open · Float ₹${cashSession.openingFloat}`
+                : 'No Cash Session'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setInvoiceView(invoiceView === 'billing' ? 'gst-invoice' : 'billing')}
-            className="hidden md:flex items-center gap-1.5 text-[10px] font-mono border border-[#E8447A]/40 px-2.5 py-1.5 rounded-lg hover:bg-[#E8447A]/10 text-[#E8447A]/80 uppercase tracking-widest transition-all"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            {invoiceView === 'billing' ? 'GST Invoice' : 'Back to Billing'}
-          </button>
+          {cashSession?.status !== 'open' && (
+            <button
+              onClick={() => setShowCashOpen(true)}
+              className="text-[10px] font-mono text-emerald-400 border border-emerald-400/30 px-2.5 py-1.5 rounded-lg hover:border-emerald-400 transition-all uppercase tracking-widest"
+            >
+              Open Cash
+            </button>
+          )}
+          {cashSession?.status === 'open' && (
+            <button
+              onClick={() => setShowCashClose(true)}
+              className="text-[10px] font-mono text-amber-400 border border-amber-400/30 px-2.5 py-1.5 rounded-lg hover:border-amber-400 transition-all uppercase tracking-widest"
+            >
+              Close Cash
+            </button>
+          )}
           <button
             onClick={onExit}
-            className="flex items-center gap-1.5 text-[10px] font-mono text-[#E8447A]/60 border border-[#E8447A]/30 px-2.5 py-1.5 rounded-lg hover:border-[#E8447A]/70 hover:text-[#E8447A] transition-all uppercase tracking-widest"
+            className="flex items-center gap-1.5 text-[10px] font-mono text-white/50 border border-white/15 px-2.5 py-1.5 rounded-lg hover:text-white transition-all uppercase tracking-widest"
           >
-            <ArrowLeft className="w-3 h-3" />
-            Exit
+            <ArrowLeft className="w-3 h-3" /> Exit
           </button>
           <button
             onClick={() => logoutMutation.mutate()}
-            className="flex items-center gap-1.5 text-[10px] font-mono text-[#FFFFFF]/50 border border-[rgba(240,234,210,0.15)] px-2.5 py-1.5 rounded-lg hover:border-[#FFFFFF]/40 hover:text-[#FFFFFF] transition-all uppercase tracking-widest"
+            className="flex items-center gap-1.5 text-[10px] font-mono text-[#E8447A]/70 border border-[#E8447A]/20 px-2.5 py-1.5 rounded-lg hover:text-[#E8447A] transition-all uppercase tracking-widest"
           >
-            <LogOut className="w-3 h-3" />
-            Sign Out
+            <LogOut className="w-3 h-3" /> Sign Out
           </button>
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row">
-        {/* Left Panel: Table Selector */}
-        <div className="lg:w-52 border-b lg:border-b-0 lg:border-r border-[rgba(26,26,26,0.10)] bg-white overflow-x-auto lg:overflow-y-auto flex lg:flex-col gap-2 p-3 shrink-0">
-          <p className="hidden lg:block text-[9px] font-mono text-[#E8447A] uppercase tracking-widest px-1 mb-1">Active Bills</p>
-          <div className="flex lg:flex-col gap-2 min-w-max lg:min-w-0">
-            {MOCK_BILLS.map(b => {
-              const total = b.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-              const isActive = b.tableId === selectedTableId;
-              return (
-                <button
-                  key={b.tableId}
-                  onClick={() => { setSelectedTableId(b.tableId); setPaymentDone(false); setAppliedCoupon(null); setCashReceived(''); }}
-                  className={`rounded-xl border p-3 text-left transition-all shrink-0 lg:shrink whitespace-nowrap lg:whitespace-normal
-                    ${isActive ? 'border-[#E8447A] bg-[#E8447A]/15 shadow-[0_0_0_1px_#E8447A]' : 'border-[rgba(26,26,26,0.10)] hover:border-[#E8447A]/40 bg-white'}`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <p className={`text-[12px] font-semibold ${isActive ? 'text-[#E8447A]' : 'text-[#1a1a1a]'}`}>{b.tableLabel}</p>
-                    {isActive
-                      ? <span className="text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded-full bg-[#E8447A] text-[#1a1a1a]">Active</span>
-                      : <span className="text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded-full border border-[#E8447A]/60 text-[#E8447A]">Pending</span>
-                    }
-                  </div>
-                  <p className="text-[10px] text-[#1a1a1a]/40 truncate mt-0.5">{b.customerName}</p>
-                  <p className={`text-[11px] font-mono font-bold mt-1.5 ${isActive ? 'text-[#E8447A]' : 'text-[#1a1a1a]/60'}`}>
-                    {inr(total)}
-                  </p>
-                </button>
-              );
-            })}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: Order list */}
+        <div className="w-72 border-r border-gray-200 overflow-y-auto bg-gray-50/50">
+          <div className="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
+            <p className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Active Orders</p>
+            <button onClick={() => ordersQuery.refetch()} className="text-gray-400 hover:text-gray-700">
+              <RefreshCw className="w-3 h-3" />
+            </button>
+          </div>
+
+          {ordersQuery.isLoading && (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+            </div>
+          )}
+
+          {orders.length === 0 && !ordersQuery.isLoading && (
+            <p className="text-center text-xs text-gray-400 py-12">No active orders</p>
+          )}
+
+          <div className="divide-y divide-gray-100">
+            {orders.map((order) => (
+              <button
+                key={order._id}
+                onClick={() => {
+                  setSelectedOrderId(order._id);
+                  setStep('bill');
+                  setInvoiceId(null);
+                  setUpiQrData(null);
+                }}
+                className={`w-full text-left px-3 py-3 hover:bg-white transition-colors ${
+                  selectedOrderId === order._id ? 'bg-white border-l-2 border-[#E8447A]' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-gray-900">#{order.orderNumber}</span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase ${
+                    order.status === 'served' ? 'bg-green-100 text-green-700' :
+                    order.status === 'ready' ? 'bg-blue-100 text-blue-700' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>{order.status}</span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Hash className="w-3 h-3" />
+                    {order.channel.replace('_', '-')}
+                  </span>
+                  <span className="font-mono font-bold text-gray-700">{fmtINR(order.totals.grand)}</span>
+                </div>
+                <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
+                  <Clock className="w-3 h-3" />
+                  {fmtTime(order.createdAt)}
+                  <span className="ml-1">{order.items.length} items</span>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Middle Panel: Bill */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 min-w-0">
+        {/* Right: Billing panel */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          {!selectedOrder && (
+            <div className="h-full flex items-center justify-center text-center">
+              <div>
+                <Receipt className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+                <p className="text-sm font-medium text-gray-500">Select an order to bill</p>
+                <p className="text-xs text-gray-400 mt-1">All served and active orders appear on the left</p>
+              </div>
+            </div>
+          )}
 
-          {invoiceView === 'gst-invoice' ? (
-            <GSTInvoice bill={bill} subtotal={subtotal} discountAmt={discountAmt} cgst={cgst} sgst={sgst} grandTotal={grandTotal} invoiceNumber={invoiceNumber} appliedCoupon={appliedCoupon} inr={inr} onClose={() => setInvoiceView('billing')} />
-          ) : (
-            <div className="max-w-2xl mx-auto space-y-4">
-              {/* Bill Header */}
-              <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h2 className="text-[16px] font-barlow font-black uppercase text-[#E8447A]">{bill.tableLabel}</h2>
-                    <p className="text-[12px] text-[#1a1a1a]/50 mt-0.5">{bill.customerName} · {bill.serverName}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-mono text-[#E8447A] uppercase">Seated</p>
-                    <p className="text-[13px] font-mono text-[#1a1a1a]">{bill.seatedMins}m ago</p>
-                  </div>
+          {selectedOrder && step === 'bill' && (
+            <div className="max-w-lg mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-gray-900">Order #{selectedOrder.orderNumber}</h2>
+                <button onClick={resetFlow} className="text-gray-400 hover:text-gray-700">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Line items */}
+              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                  <p className="text-xs font-semibold text-gray-700">Items</p>
                 </div>
-
-                {/* Items */}
-                <div className="border-t border-[rgba(26,26,26,0.08)] pt-4 space-y-2">
-                  {bill.items.map(item => (
-                    <div key={item.id} className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] font-mono text-[#E8447A] w-5 shrink-0">{item.qty}×</span>
-                        <div className="min-w-0">
-                          <p className="text-[12px] text-[#1a1a1a] truncate">{item.name}</p>
-                          <p className="text-[9px] font-mono text-[#E8447A] uppercase">{item.category}</p>
-                        </div>
+                <div className="divide-y divide-gray-50">
+                  {selectedOrder.items.filter((i) => i.status !== 'cancelled').map((item) => (
+                    <div key={item._id} className="px-4 py-2.5 flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900">{item.qty}× {item.name}</p>
+                        {item.variantName && (
+                          <p className="text-[10px] text-gray-400">{item.variantName}</p>
+                        )}
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[12px] font-mono text-[#1a1a1a]">{inr(item.qty * item.unitPrice)}</p>
-                        <p className="text-[9px] font-mono text-[#1a1a1a]/40">{inr(item.unitPrice)} each</p>
-                      </div>
+                      <span className="text-xs font-mono text-gray-700">{fmtINR(item.lineTotal)}</span>
                     </div>
                   ))}
                 </div>
-              </div>
-
-              {/* Coupon */}
-              <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Tag className="w-4 h-4 text-[#E8447A]" />
-                  <p className="text-[12px] font-medium text-[#E8447A]">Coupon / Discount</p>
-                </div>
-                {appliedCoupon ? (
-                  <div className="flex items-center justify-between bg-[#1BC8C8]/10 border border-[#1BC8C8]/30 rounded-xl px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#1BC8C8]" />
-                      <span className="text-[12px] font-mono font-semibold text-[#1BC8C8]">{appliedCoupon.code}</span>
-                      <span className="text-[11px] text-[#1BC8C8]">— {appliedCoupon.pct}% off</span>
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-1.5">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Subtotal</span>
+                    <span className="font-mono">{fmtINR(selectedOrder.totals.subtotal)}</span>
+                  </div>
+                  {selectedOrder.totals.discount > 0 && (
+                    <div className="flex justify-between text-xs text-green-600">
+                      <span>Discount</span>
+                      <span className="font-mono">−{fmtINR(selectedOrder.totals.discount)}</span>
                     </div>
-                    <button onClick={() => setAppliedCoupon(null)}>
-                      <X className="w-3.5 h-3.5 text-[#1BC8C8]" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={couponInput}
-                      onChange={e => { setCouponInput(e.target.value.toUpperCase()); setCouponError(''); }}
-                      onKeyDown={e => e.key === 'Enter' && applyCoupon()}
-                      placeholder="Enter coupon code"
-                      className="flex-1 border border-[rgba(26,26,26,0.18)] rounded-xl px-3 py-2 text-[12px] font-mono uppercase outline-none focus:border-[#E8447A] focus:ring-2 focus:ring-[#E8447A]/20"
-                    />
-                    <button
-                      onClick={applyCoupon}
-                      className="px-4 py-2 bg-[#1a1a1a] text-[#FFFFFF] rounded-xl text-[12px] font-medium hover:bg-[#1a1a1a]/80 transition-colors"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                )}
-                {couponError && <p className="text-[11px] text-red-500 mt-1.5">{couponError}</p>}
-                <p className="text-[10px] text-[#E8447A] mt-2 font-mono">Try: SMART10 · WELCOME5 · FEAST15</p>
-              </div>
-
-              {/* Tax Breakdown */}
-              <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4 space-y-2">
-                <div className="flex items-center gap-2 mb-3">
-                  <Percent className="w-4 h-4 text-[#E8447A]" />
-                  <p className="text-[12px] font-medium text-[#E8447A]">Tax Breakdown (GST)</p>
-                </div>
-                <TaxRow label="Subtotal" value={inr(subtotal)} />
-                {appliedCoupon && (
-                  <TaxRow label={`Discount (${appliedCoupon.code} −${appliedCoupon.pct}%)`} value={`− ${inr(discountAmt)}`} accent="text-[#E8447A]" />
-                )}
-                <TaxRow label="After Discount" value={inr(afterDiscount)} />
-                <div className="border-t border-dashed border-[rgba(26,26,26,0.08)] pt-2 mt-2">
-                  <TaxRow label="CGST @ 2.5%" value={inr(cgst)} accent="text-[#1a1a1a]/40" />
-                  <TaxRow label="SGST @ 2.5%" value={inr(sgst)} accent="text-[#1a1a1a]/40" />
-                </div>
-                <div className="border-t border-[#E8447A]/40 pt-2 mt-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-bold text-[#E8447A]">Grand Total</span>
-                    <span className="text-[15px] font-bold text-[#E8447A] font-mono">{inr(grandTotal)}</span>
+                  )}
+                  {selectedOrder.totals.tax > 0 && (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Tax</span>
+                      <span className="font-mono">{fmtINR(selectedOrder.totals.tax)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-200">
+                    <span>Total</span>
+                    <span className="font-mono">{fmtINR(selectedOrder.totals.grand)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Split Bill */}
-              <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] p-4">
-                <button
-                  onClick={() => { setSplitCount(2); setShowSplit(!showSplit); if (!showSplit) buildSplitEntries(2); }}
-                  className="w-full flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <Split className="w-4 h-4 text-[#E8447A]" />
-                    <p className="text-[12px] font-medium text-[#E8447A]">Split Bill</p>
-                  </div>
-                  <ChevronDown className={`w-4 h-4 text-[#1a1a1a]/40 transition-transform ${showSplit ? 'rotate-180' : ''}`} />
+              {/* Discount */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                  <Percent className="w-3.5 h-3.5 text-pink-500" /> Discount / Coupon
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={discountCode}
+                    onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
+                    placeholder="Coupon code (optional)"
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-pink-400"
+                  />
+                </div>
+                <input
+                  type="number"
+                  value={discountAmount || ''}
+                  onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="Manual discount amount (₹)"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-pink-400"
+                />
+              </div>
+
+              <button
+                onClick={handleGenerateInvoice}
+                disabled={generateInvoice.isPending}
+                className="w-full py-3 bg-[#1a1a1a] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {generateInvoice.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
+                Generate Invoice
+              </button>
+            </div>
+          )}
+
+          {step === 'pay' && invoice && (
+            <div className="max-w-lg mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-gray-900">Invoice #{invoice.invoiceNumber}</h2>
+                <button onClick={resetFlow} className="text-gray-400 hover:text-gray-700">
+                  <X className="w-4 h-4" />
                 </button>
-                {showSplit && (
-                  <div className="mt-3 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] text-[#1a1a1a]/50">Split among</span>
-                      {[2, 3, 4].map(n => (
-                        <button
-                          key={n}
-                          onClick={() => { setSplitCount(n); buildSplitEntries(n); }}
-                          className={`w-8 h-8 rounded-full text-[12px] font-mono font-bold border transition-all
-                            ${splitCount === n ? 'bg-[#1a1a1a] border-[#1a1a1a] text-[#FFFFFF]' : 'border-[rgba(26,26,26,0.18)] text-[#1a1a1a]/60 hover:border-[#E8447A]'}`}
-                        >
-                          {n}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="space-y-2">
-                      {splitEntries.map((entry, i) => (
-                        <div key={i} className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <User className="w-3.5 h-3.5 text-[#1a1a1a]/40" />
-                            <span className="text-[12px] text-[#1a1a1a]">{entry.label}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[12px] font-mono font-bold text-[#1a1a1a]">{inr(entry.amount)}</span>
-                            <button
-                              onClick={() => toggleSplitPaid(i)}
-                              className={`w-6 h-6 rounded-full border flex items-center justify-center transition-all
-                                ${entry.paid ? 'bg-[#1BC8C8]/15 border-[#1BC8C8]' : 'border-[rgba(26,26,26,0.18)] hover:border-[#1a1a1a]/40'}`}
-                            >
-                              {entry.paid && <CheckCircle2 className="w-3.5 h-3.5 text-[#1BC8C8]" />}
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {splitEntries.every(e => e.paid) && (
-                      <div className="flex items-center gap-1.5 text-[#1BC8C8] text-[11px] font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        All portions paid
-                      </div>
+              </div>
+
+              {/* Invoice summary */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-2">
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Subtotal</span>
+                  <span className="font-mono">{fmtINR(invoice.subtotal)}</span>
+                </div>
+                {invoice.discount > 0 && (
+                  <div className="flex justify-between text-xs text-green-600">
+                    <span>Discount</span>
+                    <span className="font-mono">−{fmtINR(invoice.discount)}</span>
+                  </div>
+                )}
+                {invoice.tax > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Tax</span>
+                    <span className="font-mono">{fmtINR(invoice.tax)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-bold text-gray-900 pt-1 border-t border-gray-200">
+                  <span>Grand Total</span>
+                  <span className="font-mono">{fmtINR(invoice.grand)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold text-[#E8447A] pt-1">
+                  <span>Amount Due</span>
+                  <span className="font-mono">{fmtINR(invoice.amountDue)}</span>
+                </div>
+              </div>
+
+              {/* Payment method */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-700">Payment Method</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(METHOD_CONFIG) as PaymentMode[]).map((mode) => {
+                    const { icon: Icon, color } = METHOD_CONFIG[mode];
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => setPaymentMethod(mode)}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-xs font-medium transition-all ${
+                          paymentMethod === mode
+                            ? `${color} border-current`
+                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {PAYMENT_MODE_LABELS[mode]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {paymentMethod === 'cash' && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 mb-1.5">Cash Tendered</p>
+                    <input
+                      type="number"
+                      value={cashTendered}
+                      onChange={(e) => setCashTendered(e.target.value)}
+                      placeholder={`₹${invoice.amountDue.toFixed(2)}`}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-pink-400"
+                    />
+                    {cashTendered && parseFloat(cashTendered) > invoice.amountDue && (
+                      <p className="text-xs text-emerald-600 mt-1 font-medium">
+                        Change: {fmtINR(parseFloat(cashTendered) - invoice.amountDue)}
+                      </p>
                     )}
                   </div>
                 )}
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* Right Panel: Payment */}
-        <div className="lg:w-80 border-t lg:border-t-0 lg:border-l border-[rgba(26,26,26,0.10)] bg-white p-5 flex flex-col gap-4 shrink-0">
-          <div>
-            <p className="text-[9px] font-mono uppercase tracking-widest text-[#E8447A] mb-3">Payment Method</p>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { id: 'upi',  icon: Smartphone, label: 'UPI' },
-                { id: 'cash', icon: Banknote,   label: 'Cash' },
-                { id: 'card', icon: CreditCard, label: 'Card' },
-              ] as { id: PaymentMethod; icon: React.ElementType; label: string }[]).map(m => {
-                const Icon = m.icon;
-                return (
+              {/* UPI QR */}
+              {upiQrData && (
+                <div className="bg-pink-50 border border-pink-200 rounded-2xl p-4 text-center space-y-2">
+                  <p className="text-xs font-semibold text-pink-700">UPI QR Code</p>
+                  <p className="text-[10px] text-pink-600">{upiQrData}</p>
                   <button
-                    key={m.id}
-                    onClick={() => setPaymentMethod(m.id)}
-                    className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all
-                      ${paymentMethod === m.id
-                        ? 'border-[#E8447A] bg-[#E8447A]/20 text-[#E8447A] shadow-[0_0_0_1px_#E8447A]'
-                        : 'border-[rgba(26,26,26,0.10)] hover:border-[#E8447A]/50 text-[#1a1a1a]/50'}`}
+                    onClick={() => recordPayment.mutateAsync({ invoiceId: invoice._id, input: { mode: 'upi', amount: invoice.amountDue } }).then(() => setStep('done'))}
+                    className="text-xs text-pink-700 font-medium underline"
                   >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-[10px] font-mono uppercase">{m.label}</span>
+                    Mark as paid manually
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* UPI QR */}
-          {paymentMethod === 'upi' && (
-            <div className="rounded-xl bg-[#FFFFFF] border border-[rgba(26,26,26,0.10)] p-4 text-center space-y-3">
-              <div className="mx-auto w-32 h-32 bg-white border border-[rgba(26,26,26,0.12)] rounded-xl flex items-center justify-center overflow-hidden">
-                {/* Stylized QR placeholder */}
-                <div className="grid grid-cols-7 gap-0.5 p-2">
-                  {Array.from({ length: 49 }, (_, i) => (
-                    <div key={i} className={`w-2.5 h-2.5 rounded-[1px] ${Math.random() > 0.5 ? 'bg-[#1a1a1a]' : 'bg-transparent'}`} />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-[12px] font-medium text-[#1a1a1a]">Scan to Pay</p>
-                <p className="text-[15px] font-bold text-[#1a1a1a] font-mono mt-1">{inr(grandTotal)}</p>
-                <p className="text-[10px] font-mono text-[#1a1a1a]/40 mt-0.5">UPI ID: smartdine@upi</p>
-              </div>
-            </div>
-          )}
-
-          {/* Cash */}
-          {paymentMethod === 'cash' && (
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-mono text-[#1a1a1a]/40 uppercase tracking-widest block mb-1.5">Cash Received (₹)</label>
-                <input
-                  type="number"
-                  value={cashReceived}
-                  onChange={e => setCashReceived(e.target.value)}
-                  placeholder={`${(grandTotal * 83).toFixed(0)}`}
-                  className="w-full border border-[rgba(26,26,26,0.18)] rounded-xl px-3 py-2.5 text-[14px] font-mono text-[#1a1a1a] outline-none focus:border-[#E8447A] focus:ring-2 focus:ring-[#E8447A]/20"
-                />
-              </div>
-              {cashReceived && parseFloat(cashReceived) >= grandTotal * 83 && (
-                <div className="bg-[#1BC8C8]/10 border border-[#1BC8C8]/30 rounded-xl px-3 py-2.5">
-                  <div className="flex justify-between">
-                    <span className="text-[11px] text-[#1BC8C8]">Change Due</span>
-                    <span className="text-[13px] font-mono font-bold text-[#1BC8C8]">
-                      ₹{(parseFloat(cashReceived) - grandTotal * 83).toFixed(2)}
-                    </span>
-                  </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Card */}
-          {paymentMethod === 'card' && (
-            <div className="rounded-xl bg-[#FFFFFF] border border-[rgba(26,26,26,0.10)] p-4 text-center space-y-2">
-              <CreditCard className="w-8 h-8 text-[#1a1a1a]/40 mx-auto" />
-              <p className="text-[12px] text-[#1a1a1a]/60">Present card to the POS terminal</p>
-              <p className="text-[15px] font-bold text-[#1a1a1a] font-mono">{inr(grandTotal)}</p>
-              <div className="flex items-center justify-center gap-3 pt-1">
-                {['VISA', 'MC', 'AMEX', 'RUPAY'].map(c => (
-                  <span key={c} className="text-[9px] font-mono text-[#1a1a1a]/40 border border-[rgba(26,26,26,0.15)] px-2 py-0.5 rounded">{c}</span>
-                ))}
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    await openInvoicePdf(invoice._id);
+                  }}
+                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-medium text-gray-600 flex items-center justify-center gap-1.5 hover:border-gray-300"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print
+                </button>
+                <button
+                  onClick={() => downloadInvoicePdf(invoice._id, invoice.invoiceNumber)}
+                  className="py-2.5 px-4 border border-gray-200 rounded-xl text-xs font-medium text-gray-600 flex items-center gap-1.5 hover:border-gray-300"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleRecordPayment}
+                  disabled={recordPayment.isPending || upiQr.isPending}
+                  className="flex-1 py-2.5 bg-[#E8447A] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {recordPayment.isPending || upiQr.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )}
+                  Collect {fmtINR(invoice.amountDue)}
+                </button>
               </div>
             </div>
           )}
 
-          {/* Summary */}
-          <div className="bg-[#FFFFFF] rounded-xl border border-[#E8447A]/30 p-3 space-y-1.5">
-            <TaxRow label="Bill Total" value={inr(subtotal)} />
-            {appliedCoupon && <TaxRow label={`Discount (${appliedCoupon.pct}%)`} value={`− ${inr(discountAmt)}`} accent="text-[#E8447A]" />}
-            <TaxRow label="GST (5%)" value={inr(cgst + sgst)} accent="text-[#1a1a1a]/40" />
-            <div className="flex justify-between items-center border-t border-[#E8447A]/40 pt-2 mt-1">
-              <span className="text-[13px] font-bold text-[#E8447A]">Total</span>
-              <span className="text-[15px] font-bold text-[#E8447A] font-mono">{inr(grandTotal)}</span>
+          {step === 'done' && (
+            <div className="max-w-lg mx-auto flex flex-col items-center justify-center h-full text-center gap-4">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Payment Collected!</h2>
+                <p className="text-sm text-gray-500 mt-1">Order has been settled.</p>
+              </div>
+              <div className="flex gap-3">
+                {invoiceId && (
+                  <button
+                    onClick={() => downloadInvoicePdf(invoiceId, invoice?.invoiceNumber ?? 'INV')}
+                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm flex items-center gap-1.5 text-gray-600 hover:border-gray-300"
+                  >
+                    <Download className="w-4 h-4" /> Receipt
+                  </button>
+                )}
+                <button
+                  onClick={resetFlow}
+                  className="px-6 py-2.5 bg-[#1a1a1a] text-white rounded-xl text-sm font-bold"
+                >
+                  Next Order
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* Buttons */}
-          <div className="space-y-2 mt-auto">
-            <button
-              onClick={handlePay}
-              disabled={paymentMethod === 'cash' && (!cashReceived || parseFloat(cashReceived) < grandTotal * 83)}
-              className="w-full py-3.5 rounded-[100px] bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 disabled:opacity-40 disabled:cursor-not-allowed text-[#FFFFFF] text-[13px] font-semibold uppercase tracking-wider transition-colors"
-            >
-              {paymentMethod === 'upi' ? 'Confirm UPI Payment' : paymentMethod === 'cash' ? 'Confirm Cash' : 'Charge Card'}
-            </button>
-            <button
-              onClick={() => setInvoiceView(invoiceView === 'billing' ? 'gst-invoice' : 'billing')}
-              className="w-full py-2.5 rounded-xl border-2 border-[#E8447A] text-[12px] text-[#E8447A] bg-[#E8447A]/10 hover:bg-[#E8447A]/20 flex items-center justify-center gap-1.5 transition-colors font-medium"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              {invoiceView === 'billing' ? 'View GST Invoice' : 'Back to Billing'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TaxRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[11px] text-[#1a1a1a]/50">{label}</span>
-      <span className={`text-[12px] font-mono font-medium ${accent ?? 'text-[#1a1a1a]'}`}>{value}</span>
-    </div>
-  );
-}
-
-function InfoRow2({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex justify-between gap-2">
-      <span className="text-[11px] text-[#1a1a1a]/40">{label}</span>
-      <span className={`text-[12px] font-mono font-medium ${highlight ? 'text-[#E8447A] font-bold' : 'text-[#1a1a1a]/70'}`}>{value}</span>
-    </div>
-  );
-}
-
-function GSTInvoice({
-  bill, subtotal, discountAmt, cgst, sgst, grandTotal, invoiceNumber, appliedCoupon, inr, onClose
-}: {
-  bill: TableBill; subtotal: number; discountAmt: number; cgst: number; sgst: number;
-  grandTotal: number; invoiceNumber: string; appliedCoupon: { code: string; pct: number } | null;
-  inr: (n: number) => string; onClose: () => void;
-}) {
-  return (
-    <div className="max-w-lg mx-auto">
-      <div className="bg-white rounded-[22px] border border-[rgba(26,26,26,0.18)] overflow-hidden shadow-sm">
-        {/* Invoice Header */}
-        <div className="bg-[#1a1a1a] text-[#FFFFFF] px-6 py-5 border-b-2 border-[#E8447A]">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-[18px] font-barlow font-black uppercase tracking-wide text-[#E8447A]">SMARTDINE</h2>
-              <p className="text-[11px] text-[#E8447A]/60 mt-0.5 uppercase tracking-widest">Tax Invoice</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[11px] text-[#E8447A]/60 uppercase tracking-wider">Invoice No.</p>
-              <p className="text-[12px] font-mono text-[#FFFFFF]/80 mt-0.5">{invoiceNumber}</p>
-              <p className="text-[11px] text-[#FFFFFF]/40 mt-2">Date: {new Date().toLocaleDateString('en-IN')}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-b border-[rgba(26,26,26,0.08)]">
-          <div className="grid grid-cols-2 gap-4 text-[11px]">
-            <div>
-              <p className="text-[#1a1a1a]/40 uppercase tracking-wider font-mono mb-1">From</p>
-              <p className="font-semibold text-[#1a1a1a]">SmartDine Restron Co.</p>
-              <p className="text-[#1a1a1a]/50">842 Pastel Blvd, Los Angeles, CA</p>
-              <p className="text-[#1a1a1a]/50">GSTIN: 29ABCDE1234F1Z5</p>
-              <p className="text-[#1a1a1a]/50">PAN: ABCDE1234F</p>
-            </div>
-            <div>
-              <p className="text-[#1a1a1a]/40 uppercase tracking-wider font-mono mb-1">Bill To</p>
-              <p className="font-semibold text-[#1a1a1a]">{bill.customerName}</p>
-              <p className="text-[#1a1a1a]/50">{bill.tableLabel} · {bill.zone}</p>
-              <p className="text-[#1a1a1a]/50">Server: {bill.serverName}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Items */}
-        <div className="px-6 py-4">
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="border-b border-[#E8447A]/40 text-[#E8447A] uppercase tracking-wider font-mono">
-                <th className="pb-2 text-left font-medium">Item</th>
-                <th className="pb-2 text-center font-medium w-12">Qty</th>
-                <th className="pb-2 text-right font-medium w-20">Rate</th>
-                <th className="pb-2 text-right font-medium w-20">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[rgba(26,26,26,0.04)]">
-              {bill.items.map(item => (
-                <tr key={item.id}>
-                  <td className="py-2 text-[#1a1a1a]">{item.name}</td>
-                  <td className="py-2 text-center font-mono text-[#1a1a1a]/50">{item.qty}</td>
-                  <td className="py-2 text-right font-mono text-[#1a1a1a]/60">{inr(item.unitPrice)}</td>
-                  <td className="py-2 text-right font-mono font-medium text-[#1a1a1a]">{inr(item.qty * item.unitPrice)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Tax Summary */}
-        <div className="border-t border-[rgba(26,26,26,0.10)] px-6 py-4 space-y-2 bg-[#FFFFFF]">
-          <TaxRow label="Subtotal" value={inr(subtotal)} />
-          {appliedCoupon && (
-            <TaxRow label={`Discount — ${appliedCoupon.code} (${appliedCoupon.pct}%)`} value={`− ${inr(discountAmt)}`} accent="text-[#E8447A]" />
           )}
-          <TaxRow label="Taxable Amount" value={inr(subtotal - discountAmt)} />
-          <TaxRow label="CGST @ 2.5%" value={inr(cgst)} accent="text-[#1a1a1a]/40" />
-          <TaxRow label="SGST @ 2.5%" value={inr(sgst)} accent="text-[#1a1a1a]/40" />
-          <div className="flex justify-between items-center border-t border-[#E8447A]/40 pt-2 mt-2">
-            <span className="text-[14px] font-bold text-[#E8447A]">Total</span>
-            <span className="text-[16px] font-bold text-[#E8447A] font-mono">{inr(grandTotal)}</span>
+        </div>
+      </div>
+
+      {/* Cash Session Open Modal */}
+      {showCashOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="font-bold text-gray-900 mb-4">Open Cash Session</h3>
+            <input
+              type="number"
+              value={openingFloat}
+              onChange={(e) => setOpeningFloat(e.target.value)}
+              placeholder="Opening float (₹)"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-pink-400 mb-4"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setShowCashOpen(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Cancel</button>
+              <button
+                onClick={() => openCashSession.mutateAsync({ openingFloat: parseFloat(openingFloat) || 0 }).then(() => setShowCashOpen(false))}
+                disabled={openCashSession.isPending}
+                className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold disabled:opacity-50"
+              >
+                Open
+              </button>
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="px-6 py-3 text-center border-t border-[rgba(26,26,26,0.08)]">
-          <p className="text-[10px] text-[#1a1a1a]/40 font-mono uppercase tracking-widest">Thank you for dining with SmartDine · smartdine.com</p>
+      {/* Cash Session Close Modal */}
+      {showCashClose && cashSession && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="font-bold text-gray-900 mb-1">Close Cash Session</h3>
+            <p className="text-xs text-gray-500 mb-4">Expected cash: {fmtINR(cashSession.expectedCash ?? 0)}</p>
+            <input
+              type="number"
+              value={actualCash}
+              onChange={(e) => setActualCash(e.target.value)}
+              placeholder="Actual cash counted (₹)"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-pink-400 mb-4"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setShowCashClose(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Cancel</button>
+              <button
+                onClick={() => closeCashSession.mutateAsync({ id: cashSession._id, actualCash: parseFloat(actualCash) || 0 }).then(() => setShowCashClose(false))}
+                disabled={closeCashSession.isPending}
+                className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold disabled:opacity-50"
+              >
+                Close Session
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="flex gap-3 mt-4">
-        <button
-          onClick={onClose}
-          className="flex-1 py-2.5 rounded-xl border border-[rgba(26,26,26,0.18)] text-[12px] font-medium text-[#1a1a1a]/60 hover:bg-[rgba(26,26,26,0.05)]"
-        >
-          Back to Billing
-        </button>
-        <button
-          className="flex-1 py-2.5 rounded-[100px] bg-[#E8447A] text-[#1a1a1a] text-[12px] font-semibold hover:bg-[#E8447A] hover:text-white flex items-center justify-center gap-1.5 transition-colors"
-        >
-          <Printer className="w-3.5 h-3.5" />
-          Print Invoice
-        </button>
-      </div>
+      )}
     </div>
   );
 }

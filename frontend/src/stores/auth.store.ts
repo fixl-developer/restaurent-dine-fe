@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AuthUser, LoginResponse } from '@/lib/types';
 import { api, configureApiAuth } from '@/lib/api';
+import { closeAllSockets } from '@/lib/socket';
 
 interface AuthState {
   accessToken: string | null;
@@ -31,7 +32,10 @@ export const useAuthStore = create<AuthState>()(
         set({ accessToken: s.accessToken, refreshToken: s.refreshToken, user: s.user }),
       setUser: (user) => set({ user }),
       setAccessToken: (accessToken) => set({ accessToken }),
-      logout: () => set({ accessToken: null, refreshToken: null, user: null }),
+      logout: () => {
+        closeAllSockets();
+        set({ accessToken: null, refreshToken: null, user: null });
+      },
 
       hasPermission: (perm) => {
         const u = get().user;

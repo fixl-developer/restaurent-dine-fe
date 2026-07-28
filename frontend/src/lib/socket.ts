@@ -7,7 +7,15 @@ import { env } from '@/config/env';
  */
 const sockets = new Map<string, Socket>();
 
-export type SocketNamespace = '/staff' | '/kds' | '/guest' | '/now-serving' | '/menu';
+export type SocketNamespace =
+  | '/staff'
+  | '/kds'
+  | '/guest'
+  | '/now-serving'
+  | '/menu'
+  | '/tables'
+  | '/billing'
+  | '/orders';
 
 export function getSocket(namespace: SocketNamespace, query: Record<string, string> = {}): Socket {
   const key = namespace + JSON.stringify(query);

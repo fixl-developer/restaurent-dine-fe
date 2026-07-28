@@ -14,17 +14,8 @@ import {
   CartItem,
   MenuItem,
   CustomCombo,
-  Order,
-  TableUnit,
-  StockItem,
-  StaffMember,
-  NotificationAlert,
-  CustomerProfile,
 } from './types';
 import SplashScreen from './components/SplashScreen';
-
-// Pages
-import VendorDashboard from './components/VendorDashboard';
 import StorytellingHome from './components/StorytellingHome';
 import AdminPortal from './components/admin/AdminPortal';
 import KitchenDisplaySystem from './components/operations/KitchenDisplaySystem';
@@ -43,16 +34,6 @@ import MenuPage from './pages/landing/MenuPage';
 import ReservePage from './pages/landing/ReservePage';
 import CombosPage from './pages/landing/CombosPage';
 
-// Mock data (gradually replaced phase-by-phase as backend wiring lands)
-import {
-  INITIAL_ORDERS,
-  INITIAL_TABLES,
-  INITIAL_STOCK,
-  INITIAL_STAFF,
-  INITIAL_ALERTS,
-  INITIAL_CUSTOMERS,
-} from './mockData';
-import { MENU_ITEMS } from './foodData';
 
 import coquetteCake from './assets/images/cake.jpg';
 import smoothieBowl from './assets/images/salad.jpg';
@@ -149,18 +130,7 @@ export default function App() {
     return { landingMenuItems: items, landingCategories: categories };
   }, [publicMenuQuery.data]);
 
-  // ==========================================
-  // Centralized mock state (phased out as backend wiring lands)
-  // ==========================================
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
-  const [tables, setTables] = useState<TableUnit[]>(INITIAL_TABLES);
-  const [stock, setStock] = useState<StockItem[]>(INITIAL_STOCK);
-  const [staff, setStaff] = useState<StaffMember[]>(INITIAL_STAFF);
-  const [alerts, setAlerts] = useState<NotificationAlert[]>(INITIAL_ALERTS);
-  const [customers, setCustomers] = useState<CustomerProfile[]>(INITIAL_CUSTOMERS);
-
-  const [dinerConfig, setDinerConfig] = useState({
+  const [dinerConfig] = useState({
     dinerName: 'SMART DINE',
     shippingBarrier: 25.0,
     activeTax: 12.5,
@@ -249,56 +219,19 @@ export default function App() {
 
     setCheckoutData({ address, notes, totalCost: finalBill, itemsList: cartItems });
 
-    // Combos are client-constructed (no backend comboId) → submit only real menu items.
+    // Submit only real menu items (combos are client-side only for the landing page)
     const submittableItems = cartItems.filter((it) => !it.id.startsWith('combo-'));
-    const comboItems = cartItems.filter((it) => it.id.startsWith('combo-'));
-    if (comboItems.length > 0) {
-      toast.message('Combos saved locally — backend combo flow not yet supported.');
-    }
-
-    let backendOrderId: string | null = null;
-    let backendOrderNumber: string | null = null;
     if (submittableItems.length > 0) {
       try {
         const order = await placeOrder.mutateAsync({
           guestNotes: [address && `Deliver to: ${address}`, notes].filter(Boolean).join(' · ') || undefined,
           items: submittableItems.map((it) => ({ itemId: it.id, qty: it.quantity })),
         });
-        backendOrderId = order.id;
-        backendOrderNumber = order.orderNumber;
         toast.success(`Order ${order.orderNumber} placed`);
       } catch {
-        // Hook already toasts on error; checkout modal still opens with local-only state below.
+        // Hook already toasts on error
       }
     }
-
-    const orderId = backendOrderNumber ?? `${Math.floor(Math.random() * 8000) + 1000}`;
-    const itemsDescription = cartItems.map((it) => `${it.quantity}x ${it.name}`).join(', ');
-    const dispatched: Order = {
-      id: orderId,
-      table: 'Takeaway Delivery',
-      items: itemsDescription,
-      cost: finalBill,
-      state: 'Pending',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      duration: 'Just now',
-      notes,
-      address,
-      itemsList: cartItems,
-    };
-    setOrders((prev) => [dispatched, ...prev]);
-
-    const textAlert: NotificationAlert = {
-      id: `alert-${Date.now()}`,
-      title: backendOrderId ? 'Order Placed' : 'Diner Checkout Ordered',
-      message: backendOrderId
-        ? `Order ${orderId} dispatched for "${address}". Total $${finalBill.toFixed(2)}.`
-        : `Delivery dispatched for "${address}". Active total cost was $${finalBill.toFixed(2)}.`,
-      timestamp: dispatched.timestamp,
-      isRead: false,
-      type: 'order',
-    };
-    setAlerts((prev) => [textAlert, ...prev]);
 
     setIsCartOpen(false);
     setIsCheckoutOpen(true);
@@ -416,32 +349,7 @@ export default function App() {
           <Route path="/window" element={<GuestWindowPage />} />
           <Route path="/track/:orderId" element={<GuestTrackPage />} />
           <Route path="/now-serving" element={<NowServingPage />} />
-          <Route
-            path="/vendor"
-            element={
-              <RequireAuth>
-                <VendorDashboard
-                  orders={orders}
-                  setOrders={setOrders}
-                  menuItems={menuItems}
-                  setMenuItems={setMenuItems}
-                  tables={tables}
-                  setTables={setTables}
-                  stock={stock}
-                  setStock={setStock}
-                  staff={staff}
-                  setStaff={setStaff}
-                  alerts={alerts}
-                  setAlerts={setAlerts}
-                  customers={customers}
-                  setCustomers={setCustomers}
-                  dinerConfig={dinerConfig}
-                  setDinerConfig={setDinerConfig}
-                  onExit={() => navigate('home')}
-                />
-              </RequireAuth>
-            }
-          />
+          <Route path="/vendor" element={<Navigate to="/admin" replace />} />
           {/* /order-tracker was a demo page — real customer tracking is at /track/:orderId */}
           <Route path="/order-tracker" element={<Navigate to="/" replace />} />
         </Routes>
