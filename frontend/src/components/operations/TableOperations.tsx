@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Users, CheckCircle2,
   Sparkles, CreditCard, Merge, MoveRight, Scissors,
-  X, ChevronRight, RefreshCw, LogOut, Loader2,
+  X, ChevronRight, RefreshCw, LogOut, Loader2, ShoppingCart,
 } from 'lucide-react';
 import FloorPlanView, { type TableOccupant } from '@/components/floorplan/FloorPlanView';
 import {
@@ -295,6 +295,15 @@ export default function TableOperations({ onExit }: { onExit: () => void }) {
               {/* Table Actions */}
               <div className="space-y-2">
                 <p className="text-[9px] font-mono uppercase tracking-widest text-[#1a1a1a]/40">Table Actions</p>
+                {selected.status === 'seated' && (
+                  <button
+                    onClick={() => window.location.href = `/order?table=${selected._id}`}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-[rgba(26,26,26,0.15)] hover:border-[#10B981] hover:bg-[#10B981]/10 transition-all text-[11px] font-medium text-[#1a1a1a]"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    Take Order
+                  </button>
+                )}
                 <button
                   onClick={() => setActionMode('merge-select')}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-[rgba(26,26,26,0.15)] hover:border-[#E8447A] hover:bg-[#E8447A]/10 transition-all text-[11px] font-medium text-[#1a1a1a]"
